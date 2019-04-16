@@ -1,4 +1,4 @@
-from utils.wrappers import OpenCV_Wrapper
+from utils.wrappers import OpenCV_Wrapper, Kinect_Wrapper
 from algorithms.de_haan import DeHaan
 import argparse
 
@@ -23,6 +23,6 @@ class MyArgumentParser:
 	def parse_args(self, args = None):
 		arguments = self.parser.parse_args(args)
 		strategy = DeHaan() if arguments.aproach == "DeHaan" else None # Buscar forma mais elegante de fazer isto.
-		wrapper = OpenCV_Wrapper(arguments.source) if not arguments.use_kinect else None
+		wrapper = OpenCV_Wrapper(arguments.source) if not arguments.use_kinect else Kinect_Wrapper()
 
 		return arguments, wrapper, strategy
