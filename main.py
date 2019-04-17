@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
 				strategy.process(frame)
 
-				cv2.imshow("rPPG Tracker", frame)
+				# cv2.imshow("rPPG Tracker", frame)
 				frame_count += 1
 			else:
 				frames_to_skip = args.skip_count

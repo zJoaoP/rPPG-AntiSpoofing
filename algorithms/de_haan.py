@@ -26,20 +26,33 @@ class DeHaan(DefaultStrategy):
 		Xs = 3.0 * r_norm + 2.0 * g_norm
 		Ys = 1.5 * r_norm + 1.0 * g_norm - 1.5 * b_norm
 
-		Xf = self.bandpass_filter(Xs, low = 0.4, high = 3.0)
-		Yf = self.bandpass_filter(Ys, low = 0.4, high = 3.0)
+		Xf = self.bandpass_filter(Xs)
+		Yf = self.bandpass_filter(Ys)
 
 		alpha = np.std(Xf) / np.std(Yf)
 
 		return Xf - (alpha * Yf)
 
-	def show_results(self, window_size = 30):
+	def show_results(self, window_size = 45):
 		reference = self.measure_reference(window_size = window_size)
-		plt.subplot(2, 1, 1)
+		plt.subplot(3, 1, 1)
+		plt.plot(self.temporal_means[:, 2], 'r')
+		plt.plot(self.temporal_means[:, 1], 'g')
+		plt.plot(self.temporal_means[:, 0], 'b')
+
+		plt.subplot(3, 1, 2)
 		plt.plot(reference)
 
-		reference_fourier = np.fft.rfft(reference)
-		plt.subplot(2, 1, 2)
-		plt.plot(np.abs(reference_fourier))
+		reference_fourier = np.abs(np.fft.rfft(reference, norm = "ortho"))
+		contribution = 1.0 / len(reference_fourier)
+		print(np.argmax(reference_fourier))
+		print(reference_fourier[np.argmax(reference_fourier)])
+		print(len(reference_fourier))
+		highest_frequency = 0.0
+
+		plt.subplot(3, 1, 3)
+		plt.title("FFT of Signal({0:2f} bpm)".format(highest_frequency * 60.0))
+		plt.plot(reference_fourier)
+
 
 		plt.show()
