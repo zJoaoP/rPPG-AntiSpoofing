@@ -33,5 +33,5 @@ class DefaultStrategy:
 		b, a = signal.butter(4, w, mode)
 		return signal.filtfilt(b, a, y)
 
-	def bandpass_filter(self, y, low = 0.6, high = 4.0):
+	def bandpass_filter(self, y, low = 0.5, high = 4.0):
 		return self.filter_signal(self.filter_signal(y, high, 'low'), low, 'high')

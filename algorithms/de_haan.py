@@ -19,22 +19,30 @@ class DeHaan(DefaultStrategy):
 			self.temporal_means = np.append(self.temporal_means, [means], axis = 0)
 
 	def measure_reference(self, window_size = 30):
-		r_norm = self.moving_window_normalization(self.temporal_means[:, 2], window_size)
-		g_norm = self.moving_window_normalization(self.temporal_means[:, 1], window_size)
-		b_norm = self.moving_window_normalization(self.temporal_means[:, 0], window_size)
+		# r_norm = self.moving_window_normalization(self.temporal_means[:, 2], window_size)
+		# g_norm = self.moving_window_normalization(self.temporal_means[:, 1], window_size)
+		# b_norm = self.moving_window_normalization(self.temporal_means[:, 0], window_size)
 
-		Xs = 3.0 * r_norm + 2.0 * g_norm
-		Ys = 1.5 * r_norm + 1.0 * g_norm - 1.5 * b_norm
+		r = self.temporal_means[:, 2]
+		g = self.temporal_means[:, 1]
+		b = self.temporal_means[:, 0]
+
+		Xs = 3.0 * r + 2.0 * g
+		Ys = 1.5 * r + 1.0 * g - 1.5 * b
 
 		Xf = self.bandpass_filter(Xs)
 		Yf = self.bandpass_filter(Ys)
 
 		alpha = np.std(Xf) / np.std(Yf)
-
 		return Xf - (alpha * Yf)
 
 	def show_results(self, window_size = 45):
+		# https://www.arduino.cc/reference/en/language/functions/math/map/
+		def map_range(x, in_min, in_max, out_min, out_max):
+			return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+
 		reference = self.measure_reference(window_size = window_size)
+		
 		plt.subplot(3, 1, 1)
 		plt.plot(self.temporal_means[:, 2], 'r')
 		plt.plot(self.temporal_means[:, 1], 'g')
@@ -43,16 +51,10 @@ class DeHaan(DefaultStrategy):
 		plt.subplot(3, 1, 2)
 		plt.plot(reference)
 
-		reference_fourier = np.abs(np.fft.rfft(reference, norm = "ortho"))
-		contribution = 1.0 / len(reference_fourier)
-		print(np.argmax(reference_fourier))
-		print(reference_fourier[np.argmax(reference_fourier)])
-		print(len(reference_fourier))
-		highest_frequency = 0.0
-
+		signal_fft = np.fft.rfft(reference)
+		powered_fft = 2.0 / len(self.temporal_means) * np.abs(signal_fft)
+		
 		plt.subplot(3, 1, 3)
-		plt.title("FFT of Signal({0:2f} bpm)".format(highest_frequency * 60.0))
-		plt.plot(reference_fourier)
-
+		plt.plot(powered_fft)
 
 		plt.show()
