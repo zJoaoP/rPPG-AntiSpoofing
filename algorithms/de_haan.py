@@ -19,13 +19,13 @@ class DeHaan(DefaultStrategy):
 			self.temporal_means = np.append(self.temporal_means, [means], axis = 0)
 
 	def measure_reference(self, window_size = 30):
-		# r_norm = self.moving_window_normalization(self.temporal_means[:, 2], window_size)
-		# g_norm = self.moving_window_normalization(self.temporal_means[:, 1], window_size)
-		# b_norm = self.moving_window_normalization(self.temporal_means[:, 0], window_size)
+		r = self.moving_window_normalization(self.temporal_means[:, 2], window_size)
+		g = self.moving_window_normalization(self.temporal_means[:, 1], window_size)
+		b = self.moving_window_normalization(self.temporal_means[:, 0], window_size)
 
-		r = self.temporal_means[:, 2]
-		g = self.temporal_means[:, 1]
-		b = self.temporal_means[:, 0]
+		# r = self.temporal_means[:, 2]
+		# g = self.temporal_means[:, 1]
+		# b = self.temporal_means[:, 0]
 
 		Xs = 3.0 * r + 2.0 * g
 		Ys = 1.5 * r + 1.0 * g - 1.5 * b
@@ -36,7 +36,7 @@ class DeHaan(DefaultStrategy):
 		alpha = np.std(Xf) / np.std(Yf)
 		return Xf - (alpha * Yf)
 
-	def show_results(self, window_size = 45):
+	def show_results(self, frame_rate = 30, window_size = 30):
 		# https://www.arduino.cc/reference/en/language/functions/math/map/
 		def map_range(x, in_min, in_max, out_min, out_max):
 			return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
@@ -51,10 +51,10 @@ class DeHaan(DefaultStrategy):
 		plt.subplot(3, 1, 2)
 		plt.plot(reference)
 
-		signal_fft = np.fft.rfft(reference)
-		powered_fft = 2.0 / len(self.temporal_means) * np.abs(signal_fft)
-		
+		x, y = self.get_fft(reference, frame_rate = frame_rate)
+
+		print("[DeHaan] {0:2f} beats per minute.".format(60.0 * x[np.argmax(y)]))
 		plt.subplot(3, 1, 3)
-		plt.plot(powered_fft)
+		plt.plot(x, y)
 
 		plt.show()

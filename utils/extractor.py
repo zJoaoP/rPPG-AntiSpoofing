@@ -3,17 +3,13 @@ import cv2
 
 class Extractor:
 	def remove_pixels_outside(self, image, polygon):
-		corners = np.array(polygon, dtype = np.int32)
 		mask = np.zeros(image.shape, dtype = np.uint8)
-
-		cv2.fillConvexPoly(mask, corners, (1,) * image.shape[2])
+		cv2.fillPoly(mask, np.array([polygon], dtype = np.int32), color = (1,) * image.shape[2])
 		return image * mask
 
 	def remove_pixels_inside(self, image, polygon):
-		corners = np.array(polygon, dtype = np.int32)
 		mask = np.ones(image.shape, dtype = np.uint8)
-
-		cv2.fillConvexPoly(mask, corners, (0,) * image.shape[2])
+		cv2.fillPoly(mask, np.array(polygon, dtype = np.int32), color = (0,) * image.shape[2])
 		return image * mask
 
 	def extract_points(self, landmarks, index_list):
@@ -59,3 +55,9 @@ class CheeksOnly(Extractor):
 		right_cheek_face = self.remove_pixels_outside(frame, right_cheek_polygon)
 
 		return left_cheek_face + right_cheek_face
+
+class CheeksAndNose(Extractor):
+	def extract_roi(self, frame, landmarks):
+		roi_index_list = [0, 3, 31, 35, 13, 16, 28]
+		roi_polygon = self.extract_points(landmarks, roi_index_list)
+		return self.remove_pixels_outside(frame, roi_polygon)

@@ -1,4 +1,4 @@
-from utils.extractor import CheeksOnly, FaceWithoutEyes
+from utils.extractor import CheeksOnly, FaceWithoutEyes, CheeksAndNose
 
 from utils.argument_parser import MyArgumentParser
 from utils.landmarks import LandmarkPredictor
@@ -6,7 +6,7 @@ import cv2
 
 if __name__ == "__main__":
 	args, wrapper, strategy = MyArgumentParser().parse_args()
-	predictor, extractor = LandmarkPredictor(), CheeksOnly()
+	predictor, extractor = LandmarkPredictor(), CheeksAndNose()
 
 	frame_rate = wrapper.get_frame_rate()
 	frames_to_skip = 0
@@ -27,9 +27,9 @@ if __name__ == "__main__":
 
 				strategy.process(frame)
 
-				# cv2.imshow("rPPG Tracker", frame)
+				cv2.imshow("rPPG Tracker", frame)
 				frame_count += 1
 			else:
-				frames_to_skip = args.skip_count
+				frames_to_skip = args.skip_count	
 
 	strategy.show_results()

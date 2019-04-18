@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 
 class Wrapper:
-	def __init__(self, width = 1280, height = 720):
+	def __init__(self, width = 680, height = 440):
 		self.height = height
 		self.width = width
 
@@ -18,9 +18,14 @@ class Wrapper:
 	def stop_condition(self):
 		return True
 
-class Kinect_Wrapper(Wrapper):
+	def to_rgb(self, image):
+		return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-	def __init__(self, width = 680, height = 440):
+	def to_bgr(self, image):
+		return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+class Kinect_Wrapper(Wrapper):
+	def __init__(self, width = 1280, height = 720):
 		super(Kinect_Wrapper, self).__init__(width, height)
 
 		self.pipeline = OpenGLPacketPipeline()
@@ -41,9 +46,13 @@ class Kinect_Wrapper(Wrapper):
 
 	def get_frame(self):
 		frames = self.listener.waitForNewFrame()
+		color_frame = cv2.resize(frames["color"].asarray(np.uint8), (self.width, self.height), cv2.INTER_CUBIC)
+		self.listener.release(frames)
+		return True, self.to_bgr(self.to_rgb(color_frame))
+
 		rgb_frame = cv2.resize(frames["color"].asarray(), (self.width, self.height))
 		self.listener.release(frames)
-		return True, cv2.cvtColor(cv2.cvtColor(rgb_frame, cv2.COLOR_BGR2RGB), cv2.COLOR_RGB2BGR)
+		return True, rgb_frame.astype(np.uint8)[:, :, :4]
 
 	def get_frame_rate(self):
 		return 30
