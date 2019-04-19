@@ -18,7 +18,7 @@ class DeHaan(DefaultStrategy):
 		else:
 			self.temporal_means = np.append(self.temporal_means, [means], axis = 0)
 
-	def measure_reference(self, window_size = 30):
+	def measure_reference(self, frame_rate = 30, window_size = 30):
 		r = self.moving_window_normalization(self.temporal_means[:, 2], window_size)
 		g = self.moving_window_normalization(self.temporal_means[:, 1], window_size)
 		b = self.moving_window_normalization(self.temporal_means[:, 0], window_size)
@@ -30,18 +30,14 @@ class DeHaan(DefaultStrategy):
 		Xs = 3.0 * r + 2.0 * g
 		Ys = 1.5 * r + 1.0 * g - 1.5 * b
 
-		Xf = self.bandpass_filter(Xs)
-		Yf = self.bandpass_filter(Ys)
+		Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = 32)
+		Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = 32)
 
 		alpha = np.std(Xf) / np.std(Yf)
 		return Xf - (alpha * Yf)
 
 	def show_results(self, frame_rate = 30, window_size = 30):
-		# https://www.arduino.cc/reference/en/language/functions/math/map/
-		def map_range(x, in_min, in_max, out_min, out_max):
-			return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-
-		reference = self.measure_reference(window_size = window_size)
+		reference = self.measure_reference(frame_rate = frame_rate, window_size = window_size)
 		
 		plt.subplot(3, 1, 1)
 		plt.plot(self.temporal_means[:, 2], 'r')

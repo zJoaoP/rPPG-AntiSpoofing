@@ -22,24 +22,13 @@ class DefaultStrategy:
 		return xf, 2.0 / sample_count * np.abs(yf[0 : sample_count // 2])
 
 	# https://gitlab.idiap.ch/bob/bob.rppg.base/blob/master/bob/rppg/base/utils.py
-	def build_bandpass_filter(self, frame_rate, order, min_freq = 0.4, max_freq = 4.0):
-		from scipy.signal import firwin
+	def build_bandpass_filter(self, fs, order, min_freq = 0.7, max_freq = 4.0):
+		from scipy.signal import firwin 
 		
-		nyq = frame_rate / 2.0
-		num_taps = order + 1
-		return firwin(num_taps, [min_freq / nyq, max_freq / nyq], pass_zero = False)
+		nyq = fs / 2.0
+		numtaps = order + 1
+		return firwin(numtaps, [min_freq/nyq, max_freq/nyq], pass_zero=False)
 
-	def bandpass_filter(self, y, frame_rate = 30, min_freq = 0.4, max_freq = 3.5):
+	def bandpass_filter(self, data, frame_rate = 30, min_freq = 0.7, max_freq = 4.0, order = 3):
 		from scipy.signal import filtfilt
-
-		band_pass_filter = self.build_bandpass_filter(frame_rate, (len(y) - 4) // 3, min_freq, max_freq)
-		# print(band_pass_filter)
-		return filtfilt(band_pass_filter, np.array([1]), y)
-
-	# def filter_signal(self, y, threshold, mode = "low"):
-	# 	w = threshold / (len(y) / 2.0)
-	# 	b, a = signal.butter(12, w, mode)
-	# 	return signal.filtfilt(b, a, y)
-
-	# def bandpass_filter(self, y, low = 0.5, high = 4.0):
-	# 	return self.filter_signal(self.filter_signal(y, high, 'low'), low, 'high')
+		return filtfilt(self.build_bandpass_filter(fs = frame_rate, order = order, min_freq = min_freq, max_freq = max_freq), np.array([1]), data)
