@@ -1,6 +1,3 @@
-from pylibfreenect2 import Freenect2, SyncMultiFrameListener, Registration
-from pylibfreenect2 import OpenGLPacketPipeline, FrameType, Frame
-
 import numpy as np
 import cv2
 
@@ -27,6 +24,9 @@ class Wrapper:
 class Kinect_Wrapper(Wrapper):
 	def __init__(self, width = 1280, height = 720):
 		super(Kinect_Wrapper, self).__init__(width, height)
+
+		from pylibfreenect2 import Freenect2, SyncMultiFrameListener, Registration
+		from pylibfreenect2 import OpenGLPacketPipeline, FrameType, Frame
 
 		self.pipeline = OpenGLPacketPipeline()
 		self.freenect = Freenect2()
