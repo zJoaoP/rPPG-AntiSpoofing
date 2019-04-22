@@ -20,9 +20,11 @@ if __name__ == "__main__":
 			frames_to_skip -= 1
 			continue
 		else:
-			face_rect = predictor.detect_face(image = frame)
+			rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+			face_rect = predictor.detect_face(image = rgb)
+
 			if face_rect is not None:
-				landmarks = predictor.detect_landmarks(image = frame, rect = face_rect)
+				landmarks = predictor.detect_landmarks(image = rgb, rect = face_rect)
 				frame = extractor.extract_roi(frame, landmarks)
 
 				strategy.process(frame)
@@ -33,3 +35,12 @@ if __name__ == "__main__":
 				frames_to_skip = args.skip_count	
 
 	strategy.show_results()
+
+# NoMotion(15) : 64.285714
+# NoMotion(20) : 63.210702
+# NoMotion(25) : 103.47594
+# NoMotion(30) :  - 
+
+# Motion(15) :  -
+# Motion(20) :  -
+# Motion(25) :  - 
