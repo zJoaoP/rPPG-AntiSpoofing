@@ -18,25 +18,41 @@ class DeHaan(DefaultStrategy):
 		else:
 			self.temporal_means = np.append(self.temporal_means, [means], axis = 0)
 
-	def measure_reference(self, frame_rate = 30, window_size = 30):
-		r = self.moving_window_normalization(self.temporal_means[:, 2], window_size)
-		g = self.moving_window_normalization(self.temporal_means[:, 1], window_size)
-		b = self.moving_window_normalization(self.temporal_means[:, 0], window_size)
+	def measure_reference(self, frame_rate = 30, window_size = 45):
+		window_count = len(self.temporal_means) // window_size
+		windows = np.empty([window_count, window_size, 3])
 
-		# r = self.temporal_means[:, 2]
-		# g = self.temporal_means[:, 1]
-		# b = self.temporal_means[:, 0]
+		for j, k in zip(range(0, len(self.temporal_means), window_size), range(window_count)):
+			if j + window_size > len(self.temporal_means):
+				break
 
-		Xs = 3.0 * r + 2.0 * g
-		Ys = 1.5 * r + 1.0 * g - 1.5 * b
+			windows[k] = self.temporal_means[j : j + window_size]
+			k += 1
 
-		Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = 32)
-		Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = 32)
+		signal = np.zeros([len(self.temporal_means) - (len(self.temporal_means) % window_size)], dtype = np.float32) #Sobreposição de janelas.
+		for j, k in zip(range(0, len(self.temporal_means), window_size), range(window_count)):
+			if j + window_size > len(self.temporal_means):
+				break
 
-		alpha = np.std(Xf) / np.std(Yf)
-		return Xf - (alpha * Yf)
+			b, g, r = [(windows[k][:, i] - np.mean(windows[k][:, i])) / np.std(windows[k][:, i]) for i in range(3)]
 
-	def show_results(self, frame_rate = 30, window_size = 30):
+			Xs = 3.0 * r + 2.0 * g
+			Ys = 1.5 * r + 1.0 * g - 1.5 * b
+
+			Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = 17)
+			Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = 17)
+
+			alpha = np.std(Xf) / np.std(Yf)
+			window_signal = Xf - (alpha * Yf) #Normalizar com mean e std???
+
+			window_signal = (window_signal - np.mean(window_signal)) / np.std(window_signal) #Padronização.
+
+			signal[j : j + window_size] = window_signal
+			k += 1
+
+		return signal
+
+	def show_results(self, frame_rate = 30, window_size = 60):
 		reference = self.measure_reference(frame_rate = frame_rate, window_size = window_size)
 		
 		plt.subplot(3, 1, 1)
