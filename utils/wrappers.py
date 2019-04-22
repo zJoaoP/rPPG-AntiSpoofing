@@ -50,20 +50,20 @@ class Kinect_Wrapper(Wrapper):
 		self.listener.release(frames)
 		return True, self.to_bgr(self.to_rgb(color_frame))
 
-		rgb_frame = cv2.resize(frames["color"].asarray(), (self.width, self.height))
-		self.listener.release(frames)
-		return True, rgb_frame.astype(np.uint8)[:, :, :4]
-
 	def get_frame_rate(self):
 		return 30
 
 class OpenCV_Wrapper(Wrapper):
-	def __init__(self, source, width = 1280, height = 720):
+	def __init__(self, source, width = 680, height = 440):
 		super(OpenCV_Wrapper, self).__init__(width, height)		
 		self.stream = cv2.VideoCapture(source)
 
 	def get_frame(self):
-		return self.stream.read()
+		success, frame = self.stream.read()
+		if not success:
+			return False, frame
+			
+		return success, cv2.resize(frame, (self.width, self.height), interpolation = cv2.INTER_CUBIC)
 
 	def get_frame_rate(self):
 		return int(self.stream.get(cv2.CAP_PROP_FPS))
