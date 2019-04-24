@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 
 class Wrapper:
-	def __init__(self, width = 680, height = 440):
+	def __init__(self, width = 1280, height = 720):
 		self.height = height
 		self.width = width
 
@@ -54,7 +54,7 @@ class Kinect_Wrapper(Wrapper):
 		return 30
 
 class OpenCV_Wrapper(Wrapper):
-	def __init__(self, source, width = 680, height = 440):
+	def __init__(self, source, width = 1280, height = 720):
 		super(OpenCV_Wrapper, self).__init__(width, height)		
 		self.stream = cv2.VideoCapture(source)
 

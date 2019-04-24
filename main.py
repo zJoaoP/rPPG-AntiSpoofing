@@ -5,7 +5,7 @@ from utils.landmarks import LandmarkPredictor
 import cv2
 
 if __name__ == "__main__":
-	args, wrapper, strategy = MyArgumentParser().parse_args()
+	args, wrapper, strategies = MyArgumentParser().parse_args()
 	predictor, extractor = LandmarkPredictor(), CheeksAndNose()
 
 	frame_rate = wrapper.get_frame_rate()
@@ -27,20 +27,13 @@ if __name__ == "__main__":
 				landmarks = predictor.detect_landmarks(image = rgb, rect = face_rect)
 				frame = extractor.extract_roi(frame, landmarks)
 
-				strategy.process(frame)
+				for strategy in strategies:
+					strategy.process(frame)
 
 				cv2.imshow("rPPG Tracker", frame)
 				frame_count += 1
 			else:
 				frames_to_skip = args.skip_count	
 
-	strategy.show_results()
-
-# NoMotion(15) : 64.285714
-# NoMotion(20) : 63.210702
-# NoMotion(25) : 103.47594
-# NoMotion(30) :  - 
-
-# Motion(15) :  -
-# Motion(20) :  -
-# Motion(25) :  - 
+	for strategy in strategies:
+		strategy.show_results(frame_rate = frame_rate, window_size = 60, plot = True)

@@ -1,6 +1,7 @@
 from algorithms.default import DefaultStrategy
 from algorithms.de_haan import DeHaan
 
+import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 
@@ -11,7 +12,7 @@ class ModifiedDeHaan(DefaultStrategy):
 		self.N = N
 		self.M = M
 		
-		self.methods = [DeHaan() for i in range(self.N * self.M + 1)]
+		self.methods = [DeHaan() for i in range(self.N * self.M)]
 
 	def get_min_window(self, frame):
 		horizontal_mean = np.mean(frame, axis = (0, 2))
@@ -42,6 +43,21 @@ class ModifiedDeHaan(DefaultStrategy):
 				method = self.get_method(i, j)
 				method.process(sub_frame)
 
-	def show_results(self, frame_rate = 30, window_size = 60):
+	def show_results(self, frame_rate = 30, window_size = 60, plot = True):
 		signals = np.array([method.measure_reference(frame_rate = frame_rate, window_size = window_size) for method in self.methods])
-		print(signals.shape)
+		final_signal = np.mean(signals, axis = 0)
+
+		x, y = self.get_fft(final_signal, frame_rate = frame_rate)
+		if plot == True:
+
+			plt.subplot(2, 1, 1)
+			
+			plt.title("DeHaan - Modificado")
+			plt.plot(final_signal)
+
+			plt.subplot(2, 1, 2)
+			plt.plot(x, y)
+			
+			plt.show()
+
+		print("[DeHaan Modificado] {0:2f} beats per minute.".format(60.0 * x[np.argmax(y)]))
