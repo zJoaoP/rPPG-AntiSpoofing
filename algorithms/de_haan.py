@@ -19,6 +19,9 @@ class DeHaan(DefaultStrategy):
 			self.temporal_means = np.append(self.temporal_means, [means], axis = 0)
 
 	def measure_reference(self, frame_rate = 30, window_size = 45):
+		def get_order(size):
+			return (size - 6) // 3
+
 		signal = np.zeros(len(self.temporal_means), dtype = np.float32)
 
 		r = self.temporal_means[:, 2] / np.mean(self.temporal_means[:, 2])
@@ -28,8 +31,10 @@ class DeHaan(DefaultStrategy):
 		Xs = (3.0 * r) + (2.0 * g)
 		Ys = (1.5 * r) + (1.0 * g) - (1.5 * b)
 
-		Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = 32)
-		Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = 32)
+		print("ORDER: {0}".format(get_order(len(self.temporal_means))))
+
+		Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = get_order(len(self.temporal_means)))
+		Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = get_order(len(self.temporal_means)))
 		
 		window_stride = window_size // 2
 		for j in range(0, len(self.temporal_means) - window_size, window_stride):
