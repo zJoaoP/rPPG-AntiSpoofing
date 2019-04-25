@@ -20,20 +20,23 @@ if __name__ == "__main__":
 			frames_to_skip -= 1
 			continue
 		else:
-			rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-			face_rect = predictor.detect_face(image = rgb)
-
+			face_rect = predictor.detect_face(image = frame)
 			if face_rect is not None:
-				landmarks = predictor.detect_landmarks(image = rgb, rect = face_rect)
-				frame = extractor.extract_roi(frame, landmarks)
+				left, right, top, bottom = face_rect.left(), face_rect.right(), face_rect.top(), face_rect.bottom()
 
+				landmarks = predictor.detect_landmarks(image = frame, rect = face_rect)
+				frame = extractor.extract_roi(frame, landmarks)
+				
+				frame = frame[top : bottom, left : right, :]
 				for strategy in strategies:
 					strategy.process(frame)
 
 				cv2.imshow("rPPG Tracker", frame)
 				frame_count += 1
+
+				print("[rPPG Tracker] {0}/{1} frames processados.".format(frame_count, frame_limit))
 			else:
 				frames_to_skip = args.skip_count	
 
 	for strategy in strategies:
-		strategy.show_results(frame_rate = frame_rate, window_size = 60, plot = True)
+		strategy.show_results(frame_rate = frame_rate, window_size = int(frame_rate * 1.5), plot = True)

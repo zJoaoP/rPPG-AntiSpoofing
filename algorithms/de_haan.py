@@ -19,36 +19,34 @@ class DeHaan(DefaultStrategy):
 			self.temporal_means = np.append(self.temporal_means, [means], axis = 0)
 
 	def measure_reference(self, frame_rate = 30, window_size = 45):
-		window_count = len(self.temporal_means) // (window_size // 2) - 1
-		windows = np.empty([window_count, window_size, 3])
+		signal = np.zeros(len(self.temporal_means), dtype = np.float32)
 
-		for j, k in zip(range(0, len(self.temporal_means), window_size // 2), range(window_count)):
-			if j + window_size > len(self.temporal_means):
-				break
+		r = self.temporal_means[:, 2] / np.mean(self.temporal_means[:, 2])
+		g = self.temporal_means[:, 1] / np.mean(self.temporal_means[:, 1])
+		b = self.temporal_means[:, 0] / np.mean(self.temporal_means[:, 0])
 
-			windows[k] = self.temporal_means[j : j + window_size]
-			# print("Building Window: {0} -> {1}".format(j, j + window_size))
+		Xs = (3.0 * r) + (2.0 * g)
+		Ys = (1.5 * r) + (1.0 * g) - (1.5 * b)
 
-		signal = np.zeros([len(self.temporal_means) - (len(self.temporal_means) % window_size)], dtype = np.float32) #Sobreposição de janelas.
-		for j, k in zip(range(0, len(signal), window_size // 2), range(window_count)):
-			if j + window_size > len(signal):
-				break
+		Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = 32)
+		Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = 32)
+		
+		window_stride = window_size // 2
+		for j in range(0, len(self.temporal_means) - window_size, window_stride):
+			xf_window = Xf[j : j + window_size]
+			yf_window = Yf[j : j + window_size]
 
-			b, g, r = [(windows[k][:, i] / np.mean(windows[k][:, i])) for i in range(3)]
+			alpha = np.std(xf_window) / np.std(yf_window)
 
-			Xs = (3.0 * r) + (2.0 * g)
-			Ys = (1.5 * r) + (1.0 * g) - (1.5 * b)
+			window_signal = xf_window - (alpha * yf_window)
+			window_signal *= np.hanning(window_size)
 
-			Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = 8)
-			Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = 8)
+			signal[j : j + window_size] += (window_signal - np.mean(window_signal)) / np.std(window_signal)
 
-			alpha = np.std(Xf) / np.std(Yf)
-			window_signal = Xf - (alpha * Yf)
-
-			signal[j : j + window_size] += window_signal
-
-		signal = (signal - np.mean(signal)) / np.std(signal)
 		return signal
+
+	# 90.200445 beats per minute.
+
 
 	def show_results(self, frame_rate = 30, window_size = 60, plot = True):
 		reference = self.measure_reference(frame_rate = frame_rate, window_size = window_size)
