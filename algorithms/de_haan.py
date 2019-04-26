@@ -50,12 +50,9 @@ class DeHaan(DefaultStrategy):
 
 		return signal
 
-	# 90.200445 beats per minute.
-
-
 	def show_results(self, frame_rate = 30, window_size = 60, plot = True):
-		reference = self.measure_reference(frame_rate = frame_rate, window_size = window_size)
-		x, y = self.get_fft(reference, frame_rate = frame_rate)
+		signal = self.measure_reference(frame_rate = frame_rate, window_size = window_size)
+		x, y = self.get_fft(signal, frame_rate = frame_rate)
 
 		if plot == True:
 
@@ -67,7 +64,7 @@ class DeHaan(DefaultStrategy):
 			plt.plot(self.temporal_means[:, 0], 'b')
 
 			plt.subplot(3, 1, 2)
-			plt.plot(reference)
+			plt.plot(signal)
 
 			plt.subplot(3, 1, 3)
 			plt.plot(x, y)
