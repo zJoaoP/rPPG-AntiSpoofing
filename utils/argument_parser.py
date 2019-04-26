@@ -1,4 +1,5 @@
 from utils.wrappers import OpenCV_Wrapper, Kinect_Wrapper
+from algorithms.de_haan_pos import DeHaanPOS
 from algorithms.de_haan import DeHaan
 import argparse
 
@@ -16,7 +17,7 @@ class MyArgumentParser:
 							help = "Tempo (em segundos) de captura ou análise. (Padrão: %(default)s segundos)")
 		parser.add_argument("--use-kinect", dest = "use_kinect", action = "store_true", default = False,
 							help = "Define se o programa utilizará (ou não) um kinect para obter as imagens. (Padrão: %(default)s)")
-		parser.add_argument("--aproach", dest = "aproach", nargs = "?", default = ["DeHaan"], action = "store",
+		parser.add_argument("--aproach", dest = "aproach", nargs = "?", default = ["DeHaan", "DeHaanPOS"], action = "store",
 							help = "Abordagem no cálculo do rPPG. (Padrão: %(default)s)")
 		return parser
 
@@ -25,8 +26,8 @@ class MyArgumentParser:
 		for aproach in aproaches:
 			if aproach == "DeHaan":
 				strategies += [DeHaan()]
-			elif aproach == "ModifiedDeHaan":
-				strategies += [ModifiedDeHaan()]
+			elif aproach == "DeHaanPOS":
+				strategies += [DeHaanPOS()]
 
 		return strategies
 
