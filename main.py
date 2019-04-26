@@ -39,4 +39,4 @@ if __name__ == "__main__":
 				frames_to_skip = args.skip_count	
 
 	for strategy in strategies:
-		strategy.show_results(frame_rate = frame_rate, window_size = int(frame_rate * 1.5), plot = True)
+		strategy.show_results(frame_rate = frame_rate, window_size = int(frame_rate * 1.6), plot = True)
