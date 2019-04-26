@@ -31,8 +31,6 @@ class DeHaan(DefaultStrategy):
 		Xs = (3.0 * r) + (2.0 * g)
 		Ys = (1.5 * r) + (1.0 * g) - (1.5 * b)
 
-		print("ORDER: {0}".format(get_order(len(self.temporal_means))))
-
 		Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = get_order(len(self.temporal_means)))
 		Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = get_order(len(self.temporal_means)))
 		
