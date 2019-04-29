@@ -4,6 +4,8 @@ from utils.argument_parser import MyArgumentParser
 from utils.landmarks import LandmarkPredictor
 import cv2
 
+import numpy as np
+
 if __name__ == "__main__":
 	args, wrapper, strategies = MyArgumentParser().parse_args()
 	predictor, extractor = LandmarkPredictor(), CheeksAndNose()
