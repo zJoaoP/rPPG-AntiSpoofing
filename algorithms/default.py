@@ -13,13 +13,18 @@ class DefaultStrategy:
 
 		return windowed_normalization
 
-	def get_fft(self, y, frame_rate = 30):
+	def get_fft(self, y, frame_rate = 30, min_freq = 0.6, max_freq = 4.0):
 		sample_rate = 1.0 / float(frame_rate)
 		sample_count = len(y)
 
 		yf = np.fft.fft(y)
+		yf = 2.0 / sample_count * np.abs(yf[0 : sample_count // 2])
 		xf = np.linspace(0.0, 1.0 / (2.0 * sample_rate), sample_count // 2)
-		return xf, 2.0 / sample_count * np.abs(yf[0 : sample_count // 2])
+		
+		first = np.where(xf >= min_freq)[0][0]
+		last = np.where(xf >= max_freq)[0][0]
+
+		return xf[first : last], yf[first : last]
 
 	# https://gitlab.idiap.ch/bob/bob.rppg.base/blob/master/bob/rppg/base/utils.py
 	def build_bandpass_filter(self, fs, order, min_freq = 0.6, max_freq = 4.0):

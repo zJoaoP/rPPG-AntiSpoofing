@@ -13,38 +13,43 @@ class DeHaanPOS(DefaultStrategy):
 		frame = np.array(frame, dtype = np.float64)
 		frame[frame == 0.0] = np.nan
 
-		b = np.nanmean(frame[:, :, 0])
-		g = np.nanmean(frame[:, :, 1])
 		r = np.nanmean(frame[:, :, 2])
+		g = np.nanmean(frame[:, :, 1])
+		b = np.nanmean(frame[:, :, 0])
 
 		if self.temporal_means is None:
-			self.temporal_means = np.array([[b, g, r]])
+			self.temporal_means = np.array([[r, g, b]])
 		else:
-			self.temporal_means = np.append(self.temporal_means, [[b, g, r]], axis = 0)
+			self.temporal_means = np.append(self.temporal_means, [[r, g, b]], axis = 0)
 
 	def measure_reference(self, frame_rate = 30, window_size = 45):
 		signal = np.zeros(len(self.temporal_means), dtype = np.float64)
 		num_frames = len(self.temporal_means)
 
-		C = self.temporal_means.T
-		for f_id in range(num_frames):
-			if f_id + window_size < num_frames:
-				# Possível falha na precisão ao realizar operações sem produto de matrizes.
+		window_stride = 1
+		for f_id in range(0, num_frames, window_stride):
+				if f_id + window_size >= num_frames:
+					break
 
 				C = self.temporal_means[f_id : f_id + window_size, :].T
-				C_mean = np.mean(C, axis = 1, dtype = np.float64)
+				
+				# https://www.youtube.com/watch?v=GMN1A8Wfwto
+				C_mean = np.mean(C, axis = 1)
 				C_mean_diag = np.diag(C_mean)
 				C_mean_diag_inv = np.linalg.inv(C_mean_diag)
+				
 				Cn = np.matmul(C_mean_diag_inv, C)
-
 				S = np.matmul(np.array([[0, 1, -1], [-2, 1, 1]]), Cn)
-				H = S[0] + (np.std(S[0, :]) / np.std(S[1, :])) * S[1]
+				P = np.matmul(np.array([1, np.std(S[0]) / np.std(S[1])]), S)
 
-				signal[f_id : f_id + window_size] += (H - np.mean(H)) / np.std(H)
+				signal[f_id : f_id + window_size] += (P - np.mean(P))
 
-		return signal
+		return (signal - np.mean(signal)) / np.std(signal)
 
 	def show_results(self, frame_rate = 30, window_size = 60, plot = True):
+		def get_order(size):
+			return (size - 6) // 3
+
 		signal = self.measure_reference(frame_rate = frame_rate, window_size = window_size)
 		x, y = self.get_fft(signal, frame_rate = frame_rate)
 
@@ -57,6 +62,6 @@ class DeHaanPOS(DefaultStrategy):
 
 			plt.show()
 
-		print("[DeHaanPOS] {0:2f} beats per minute.".format(60.0 * x[np.argmax(y)]))
+		print("[DeHaanPOS] {0:2f} bpm.".format(60.0 * x[np.argmax(y)]))
 
 		plt.show()
