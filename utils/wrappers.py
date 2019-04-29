@@ -15,12 +15,6 @@ class Wrapper:
 	def stop_condition(self):
 		return True
 
-	def to_rgb(self, image):
-		return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-	def to_bgr(self, image):
-		return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
 class Kinect_Wrapper(Wrapper):
 	def __init__(self, width = 1280, height = 720):
 		super(Kinect_Wrapper, self).__init__(width, height)
@@ -46,10 +40,10 @@ class Kinect_Wrapper(Wrapper):
 
 	def get_frame(self):
 		frames = self.listener.waitForNewFrame()
-		# color_frame = cv2.resize(frames["color"].asarray(np.uint8), (self.width, self.height), cv2.INTER_CUBIC)
+		color_frame = cv2.resize(frames["color"].asarray(np.uint8), (self.width, self.height), cv2.INTER_CUBIC)
 		color_frame = frames["color"].asarray(np.uint8)
 		self.listener.release(frames)
-		return True, self.to_bgr(self.to_rgb(color_frame))
+		return True, color_frame[:, :, 0 : 3]
 
 	def get_frame_rate(self):
 		return 30
@@ -64,7 +58,6 @@ class OpenCV_Wrapper(Wrapper):
 		if not success:
 			return False, frame
 			
-		# return success, cv2.resize(frame, (self.width, self.height), interpolation = cv2.INTER_CUBIC)
 		return success, frame
 
 	def get_frame_rate(self):
