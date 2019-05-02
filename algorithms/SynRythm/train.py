@@ -66,6 +66,14 @@ def generate_model(input_size, sampling_rate):
 
 		return K.mean(K.greater(threshold, K.abs(true_bpm - pred_bpm)))
 
+	def far_threshold_accuracy(y_true, y_pred, threshold = 1.0): #threshold (in bpms)
+		from keras import backend as K
+
+		true_bpm = binary_to_interval(y_true)
+		pred_bpm = binary_to_interval(y_pred)
+
+		return K.mean(K.less(threshold, K.abs(true_bpm - pred_bpm)))
+
 	model = Sequential()
 	model.add(Reshape(target_shape = (input_size // sampling_rate, sampling_rate), input_shape = (input_size, )))
 	
@@ -78,8 +86,8 @@ def generate_model(input_size, sampling_rate):
 
 	model.compile(
 		optimizer = "adam",
-		loss = "mse",
-		metrics = [threshold_accuracy]
+		loss = "mae",
+		metrics = [threshold_accuracy, far_threshold_accuracy]
 	)
 
 	model.summary()
@@ -95,4 +103,4 @@ if __name__ == "__main__":
 	TIME = 15
 
 	model = generate_model(input_size = TIME * FRAME_RATE, sampling_rate = FRAME_RATE)
-	model.fit_generator(generator = data_generator(size = 32, time = TIME, samples_per_second = FRAME_RATE, noise_level = 0.35), steps_per_epoch = 1024, validation_steps = 64, epochs = 100, verbose = 1)
+	model.fit_generator(generator = data_generator(size = 32, time = TIME, samples_per_second = FRAME_RATE, noise_level = 0.50), steps_per_epoch = 2048, validation_steps = 64, epochs = 100, verbose = 1)
