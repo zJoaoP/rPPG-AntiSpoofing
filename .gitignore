@@ -1,1 +1,4 @@
 *.pyc
+*.avi
+*.dat
+/env/
