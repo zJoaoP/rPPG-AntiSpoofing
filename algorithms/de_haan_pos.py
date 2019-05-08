@@ -1,3 +1,4 @@
+from utils.extractor import CheeksOnly, FaceWithoutEyes, CheeksAndNose
 from algorithms.default import DefaultStrategy
 
 import matplotlib.pyplot as plt
@@ -9,7 +10,8 @@ class DeHaanPOS(DefaultStrategy):
 	def __init__(self):
 		self.temporal_means = None
 
-	def process(self, frame):
+	def process(self, frame, landmarks):
+		frame = CheeksAndNose().extract_roi(frame, landmarks)
 		frame = np.array(frame, dtype = np.float64)
 		frame[frame == 0.0] = np.nan
 
@@ -55,6 +57,8 @@ class DeHaanPOS(DefaultStrategy):
 		x_f, y_f = self.get_fft(filtered_signal, frame_rate = frame_rate)
 
 		if plot == True:
+			plt.title("POS")
+			
 			plt.subplot(3, 1, 1)
 			plt.plot(self.temporal_means[:, 0], 'r')
 			plt.plot(self.temporal_means[:, 1], 'g')

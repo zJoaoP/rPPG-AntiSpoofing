@@ -1,6 +1,7 @@
 from utils.wrappers import OpenCV_Wrapper, Kinect_Wrapper
 from algorithms.de_haan_pos import DeHaanPOS
 from algorithms.de_haan import DeHaan
+from algorithms.ica import ICA
 import argparse
 
 class MyArgumentParser:
@@ -13,11 +14,11 @@ class MyArgumentParser:
 							help = "Localização do arquivo de origem. (Padrão: %(default)s)")
 		parser.add_argument("--skip-count", dest = "skip_count", nargs = "?", default = 60, action = "store", type = int,
 							help = "Quantidade de frames a serem saltados caso uma face não seja detectada. (Padrão: %(default)s frames)")
-		parser.add_argument("--time-limit", dest = "time_limit", nargs = "?", default = 10, action = "store", type = int,
+		parser.add_argument("--time", dest = "time", nargs = "?", default = 10, action = "store", type = int,
 							help = "Tempo (em segundos) de captura ou análise. (Padrão: %(default)s segundos)")
 		parser.add_argument("--use-kinect", dest = "use_kinect", action = "store_true", default = False,
 							help = "Define se o programa utilizará (ou não) um kinect para obter as imagens. (Padrão: %(default)s)")
-		parser.add_argument("--aproach", dest = "aproach", nargs = "?", default = ["DeHaan", "DeHaanPOS"], action = "store",
+		parser.add_argument("--aproach", dest = "aproach", nargs = "?", default = ["DeHaan", "DeHaanPOS", "ICA"], action = "store",
 							help = "Abordagem no cálculo do rPPG. (Padrão: %(default)s)")
 		return parser
 
@@ -28,6 +29,8 @@ class MyArgumentParser:
 				strategies += [DeHaan()]
 			elif aproach == "DeHaanPOS":
 				strategies += [DeHaanPOS()]
+			elif aproach == "ICA":
+				strategies += [ICA()]
 
 		return strategies
 

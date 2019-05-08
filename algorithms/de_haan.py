@@ -1,5 +1,6 @@
-from algorithms.default import DefaultStrategy
+from utils.extractor import CheeksOnly, FaceWithoutEyes, CheeksAndNose
 
+from algorithms.default import DefaultStrategy
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
@@ -8,8 +9,10 @@ class DeHaan(DefaultStrategy):
 	def __init__(self):
 		self.temporal_means = None
 
-	def process(self, frame):
+	def process(self, frame, landmarks):
+		frame = CheeksAndNose().extract_roi(frame, landmarks)
 		frame = np.array(frame, dtype = np.float32)
+
 		frame[frame == 0.0] = np.nan
 		r = np.nanmean(frame[:, :, 2])
 		g = np.nanmean(frame[:, :, 1])
@@ -43,12 +46,8 @@ class DeHaan(DefaultStrategy):
 			alpha = np.std(Xf) / np.std(Yf)
 
 			window_signal = Xf - (alpha * Yf)
-			# window_signal *= np.hanning(window_size)
-
 			signal[j : j + window_size] += (window_signal - np.mean(window_signal)) / np.std(window_signal)
-			# signal[j : j + window_size] += window_signal
 
-		# return (signal - np.mean(signal)) / np.std(signal)
 		return signal
 
 	def show_results(self, frame_rate = 30, window_size = 60, plot = True):

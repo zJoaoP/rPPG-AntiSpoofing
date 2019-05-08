@@ -61,3 +61,15 @@ class CheeksAndNose(Extractor):
 		roi_index_list = [0, 3, 31, 35, 13, 16, 28]
 		roi_polygon = self.extract_points(landmarks, roi_index_list)
 		return self.remove_pixels_outside(frame, roi_polygon)
+
+class LeftCheek(Extractor):
+	def extract_roi(self, frame, landmarks):
+		roi_index_list = [35, 15, 12]
+		roi_polygon = self.extract_points(landmarks, roi_index_list)
+		return self.remove_pixels_outside(frame, roi_polygon)
+
+class RightCheek(Extractor):
+	def extract_roi(self, frame, landmarks):
+		roi_index_list = [31, 1, 4]
+		roi_polygon = self.extract_points(landmarks, roi_index_list)
+		return self.remove_pixels_outside(frame, roi_polygon)
