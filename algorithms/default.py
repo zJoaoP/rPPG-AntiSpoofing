@@ -1,7 +1,17 @@
 from scipy import signal
 import numpy as np
 
-class DefaultStrategy:	
+class DefaultStrategy:
+	def extract_means(self, frame):
+		nan_frame = frame
+		nan_frame[nan_frame == 0.0] = np.nan
+
+		r = np.nanmean(nan_frame[:, :, 2])
+		g = np.nanmean(nan_frame[:, :, 1])
+		b = np.nanmean(nan_frame[:, :, 0])
+
+		return [r, g, b]
+		
 	def moving_window_normalization(self, values, window_size):
 		windowed_normalization = np.zeros([len(values)])
 		left, right = (0, window_size)

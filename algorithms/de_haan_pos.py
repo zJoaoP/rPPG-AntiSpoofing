@@ -7,8 +7,8 @@ import numpy as np
 #https://pure.tue.nl/ws/portalfiles/portal/31563684/TBME_00467_2016_R1_preprint.pdf
 #https://github.com/pavisj/rppg-pos/blob/master/pos_face_seg.py
 class DeHaanPOS(DefaultStrategy):
-	def __init__(self):
-		self.temporal_means = None
+	def __init__(self, temporal_means = None):
+		self.temporal_means = temporal_means
 
 	def process(self, frame, landmarks):
 		frame = CheeksAndNose().extract_roi(frame, landmarks)
@@ -50,8 +50,11 @@ class DeHaanPOS(DefaultStrategy):
 		return (signal - np.mean(signal)) / np.std(signal)
 
 	def show_results(self, frame_rate = 30, window_size = 60, plot = True):
+		def get_order(size):
+			return (size - 6) // 3
+
 		signal = self.measure_reference(frame_rate = frame_rate, window_size = window_size)
-		filtered_signal = self.bandpass_filter(signal, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = 128)
+		filtered_signal = self.bandpass_filter(signal, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = get_order(len(signal)))
 
 		x, y = self.get_fft(signal, frame_rate = frame_rate)
 		x_f, y_f = self.get_fft(filtered_signal, frame_rate = frame_rate)

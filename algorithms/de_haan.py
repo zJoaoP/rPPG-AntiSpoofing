@@ -6,8 +6,8 @@ import numpy as np
 import cv2
 
 class DeHaan(DefaultStrategy):
-	def __init__(self):
-		self.temporal_means = None
+	def __init__(self, temporal_means = None):
+		self.temporal_means = temporal_means
 
 	def process(self, frame, landmarks):
 		frame = CheeksAndNose().extract_roi(frame, landmarks)
