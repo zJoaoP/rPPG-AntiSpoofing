@@ -35,7 +35,10 @@ class LandmarkPredictor:
 
 		return coords
 
-	def detect_landmarks(self, image, rect):
+	def detect_landmarks(self, image, rect = None):
+		if rect is None:
+			rect = dlib.rectangle(0, 0, image.shape[0], image.shape[1])
+
 		gray = self.to_gray(image)
 
 		prediction = self.predictor(gray, rect)
