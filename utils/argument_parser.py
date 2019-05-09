@@ -1,5 +1,6 @@
 from utils.wrappers import OpenCV_Wrapper, Kinect_Wrapper
 from algorithms.de_haan_pos import DeHaanPOS
+from algorithms.test_maups import TestMaups
 from algorithms.de_haan import DeHaan
 from algorithms.ica import ICA
 import argparse
@@ -31,6 +32,8 @@ class MyArgumentParser:
 				strategies += [DeHaanPOS()]
 			elif aproach == "ICA":
 				strategies += [ICA()]
+			elif aproach == "TestMaups":
+				strategies += [TestMaups()]
 
 		return strategies
 
