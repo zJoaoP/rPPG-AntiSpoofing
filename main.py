@@ -23,9 +23,9 @@ if __name__ == "__main__":
 			face_rect = predictor.detect_face(image = frame)
 			if face_rect is not None:
 				left, right, top, bottom = face_rect.left(), face_rect.right(), face_rect.top(), face_rect.bottom()
-
-				landmarks = predictor.detect_landmarks(image = frame, rect = face_rect)				
 				frame = frame[top : bottom, left : right, :]
+
+				landmarks = predictor.detect_landmarks(image = frame)
 				for strategy in strategies:
 					strategy.process(frame, landmarks)
 
