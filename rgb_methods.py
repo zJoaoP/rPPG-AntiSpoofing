@@ -65,13 +65,16 @@ if __name__ == "__main__":
 			bgr_rect = bgr_predictor.detect_face(image = bgr)
 			if bgr_rect is not None:
 				bgr_left, bgr_right, bgr_top, bgr_bottom = bgr_rect.left(), bgr_rect.right(), bgr_rect.top(), bgr_rect.bottom()
-				bgr = bgr[bgr_top : bgr_bottom, bgr_left : bgr_right, :]
+				cut_bgr = bgr[bgr_top : bgr_bottom, bgr_left : bgr_right, :]
 
-				bgr_landmarks = bgr_predictor.detect_landmarks(image = bgr)
+				bgr_landmarks = bgr_predictor.detect_landmarks(image = cut_bgr)
 				for strategy in strategies:
-					strategy.process(bgr, bgr_landmarks)
+					strategy.process(cut_bgr, bgr_landmarks)
 
-				# cv2.imshow("BGR", bgr)
+				# for x, y in bgr_landmarks:
+				# 	cv2.circle(cut_bgr, (x, y), 1, (0, 255, 0))
+
+				# cv2.imshow("BGR", cut_bgr)
 
 				frame_count += 1
 
