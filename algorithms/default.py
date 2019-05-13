@@ -11,6 +11,28 @@ class DefaultStrategy:
 		b = np.nanmean(nan_frame[:, :, 0])
 
 		return [r, g, b]
+
+	# https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=979357
+	def detrend(self, y):
+		from scipy.sparse import identity
+		from scipy.sparse import spdiags
+
+		T = len(y)
+		l = 10
+		I = identity(T)
+		
+		data = np.ones(shape = [T - 2, 1]) * np.array([1, -2, 1])
+		D2 = spdiags(data.T, np.array([0, 1, 2]), T - 2, T)
+
+		operations = I + (l ** 2) * (D2.T * D2)
+		inversion = np.linalg.inv(operations.toarray())
+
+		y_stat = np.matmul((I - np.linalg.inv((I + (l ** 2) * (D2.T * D2)).toarray())), y).A[0]
+		return y_stat
+
+
+	def uses_nir(self):
+		return False
 		
 	def moving_window_normalization(self, values, window_size):
 		windowed_normalization = np.zeros([len(values)])

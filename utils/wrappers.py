@@ -6,8 +6,8 @@ class Wrapper:
 		self.height = height
 		self.width = width
 
-	def get_frame(self): #Not Success, None
-		return False, None
+	def get_frame(self):
+		return False, None, None
 
 	def get_frame_rate(self):
 		return 0
@@ -23,14 +23,17 @@ class Kinect_Wrapper(Wrapper):
 		self.freenect = Freenect2()
 
 		self.num_devices = self.freenect.enumerateDevices()
+		
 		assert self.num_devices > 0, "[Kinect Wrapper] Nenhum dispositivo Kinect conectado!"
 		
 		self.serial = self.freenect.getDeviceSerialNumber(0)
 		self.device = self.freenect.openDevice(self.serial, pipeline = self.pipeline)
-		self.listener = SyncMultiFrameListener(FrameType.Color)
+		self.listener = SyncMultiFrameListener(FrameType.Color | FrameType.Ir)
 		
+		self.device.setIrAndDepthFrameListener(self.listener)
 		self.device.setColorFrameListener(self.listener)
-		self.device.startStreams(rgb = True, depth = False)
+
+		self.device.start()
 
 		self.registration = Registration(self.device.getIrCameraParams(), self.device.getColorCameraParams())
 
@@ -40,13 +43,22 @@ class Kinect_Wrapper(Wrapper):
 			self.device.close()
 
 	def get_frame(self):
+		def normalize(image):
+			return (image - np.min(image)) / (np.max(image) - np.min(image))
+
 		frames = self.listener.waitForNewFrame()
-		color_frame = cv2.resize(frames["color"].asarray(np.uint8), (self.width, self.height), cv2.INTER_CUBIC)
+		
+		color = cv2.resize(frames["color"].asarray(np.uint8), (self.width, self.height), cv2.INTER_CUBIC)
+		ir = frames["ir"].asarray(np.float32)
+
 		self.listener.release(frames)
-		return True, color_frame[:, :, 0 : 3]
+		return True, color[:, :, 0 : 3], (normalize(ir.reshape(424, 512, 1) / 65535.0) * 255).astype(np.uint8)
 
 	def get_frame_rate(self):
 		return 30
+
+	def uses_nir(self):
+		return True
 
 class OpenCV_Wrapper(Wrapper):
 	def __init__(self, source, width = 1280, height = 720):
@@ -58,7 +70,10 @@ class OpenCV_Wrapper(Wrapper):
 		if not success:
 			return False, frame
 			
-		return success, frame
+		return success, frame, None
 
 	def get_frame_rate(self):
 		return int(self.stream.get(cv2.CAP_PROP_FPS))
+
+	def uses_nir(self):
+		return False

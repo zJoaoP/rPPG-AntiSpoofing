@@ -29,6 +29,7 @@ class DeHaan(DefaultStrategy):
 
 		signal = np.zeros(len(self.temporal_means), dtype = np.float32)
 		window_stride = window_size // 2
+
 		for j in range(0, len(self.temporal_means) - window_size, window_stride):
 			if j + window_size > len(self.temporal_means):
 				break
@@ -46,7 +47,8 @@ class DeHaan(DefaultStrategy):
 			alpha = np.std(Xf) / np.std(Yf)
 
 			window_signal = Xf - (alpha * Yf)
-			signal[j : j + window_size] += (window_signal - np.mean(window_signal)) / np.std(window_signal)
+			signal[j : j + window_size] += ((window_signal - np.mean(window_signal)) / np.std(window_signal)) * np.hanning(window_size)
+			# signal[j : j + window_size] += window_signal * np.hanning(window_size)
 
 		return signal
 

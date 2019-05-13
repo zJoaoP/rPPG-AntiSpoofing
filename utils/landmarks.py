@@ -39,13 +39,14 @@ class LandmarkPredictor:
 		if rect is None:
 			rect = dlib.rectangle(0, 0, image.shape[0], image.shape[1])
 
-		gray = self.to_gray(image)
+		gray = self.to_gray(image) if image.shape[-1] > 1 else image
 
 		prediction = self.predictor(gray, rect)
 		return self.shape_to_np(prediction)
 
 	def detect_face(self, image):
-		gray = self.to_gray(image)
+		gray = self.to_gray(image) if image.shape[-1] > 1 else image
+
 		if self.tracker is None:
 			print("[Detector] Trying to initialize tracker.")
 			face_rect = self.detector(gray, 1)
