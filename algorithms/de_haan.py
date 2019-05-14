@@ -48,7 +48,6 @@ class DeHaan(DefaultStrategy):
 
 			window_signal = Xf - (alpha * Yf)
 			signal[j : j + window_size] += ((window_signal - np.mean(window_signal)) / np.std(window_signal)) * np.hanning(window_size)
-			# signal[j : j + window_size] += window_signal * np.hanning(window_size)
 
 		return signal
 
