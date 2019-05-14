@@ -68,7 +68,7 @@ class OpenCV_Wrapper(Wrapper):
 	def get_frame(self):
 		success, frame = self.stream.read()
 		if not success:
-			return False, frame
+			return False, frame, None
 			
 		return success, frame, None
 

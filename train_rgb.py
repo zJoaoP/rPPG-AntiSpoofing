@@ -3,8 +3,18 @@
 	pelo algoritmo proposto por Gerard De Haan (CHROM) e exportará True (Em caso de ataque de apresentação) ou False (Caso contrário).
 
 	# Etapas:
-		1. Carregar os dados.
-		2. Montar a rede. (Escolher qual algoritmo utilizar)
+		1. Carregar os dados. (OK)
+			1.1 - Definir classe para carregamento de dados. (Tentar desenvolver de modo que seja possível escolher quais arquivos serão carregados)
+			1.2 - Escrever código simples para 'argparse'.
+			1.3 - De que modo a estratégia será passada para a rede? Qual a saída? Será sempre um vetor com o tamanho da quantidade de frames?
+		
+		2. Montar a rede. (Keras ou Tensorflow?)
+			2.1 - Aprender a verificar se alguém está utilizando alguma gpu.
+			2.2 - Testar antes na máquina local.
+			2.3 - Criar um ambiente virtual (venv).
+
+			2.4 - Devo usar uma FCN ou uma RNN?
+		
 		3. Treinar a rede.
 '''
 
@@ -85,12 +95,7 @@ class DataLoader:
 		for filename in sorted(os.listdir(self.folder)):
 			if (self.file_list is None) or ((self.file_list is not None) and (filename in self.file_list)):
 				video_data = self.loader.load_video(self.folder + '/' + filename)
-				if video_data is not None:
-					print("###")
-					if data is not None:
-						print(data.shape)
-					
-					print(video_data.shape)
+				if video_data is not None:					
 					data = video_data if (data is None) else np.append(data, video_data, axis = 0)
 
 		print(data.shape)
