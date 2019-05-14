@@ -37,12 +37,14 @@ class ICA(DefaultStrategy):
 		def get_order(size):
 			return (size - 6) // 3
 
+		score = np.empty([len(signals)])
 		for i in range(len(signals)):
 			signals[i] = self.bandpass_filter(signals[i], frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = get_order(len(signals[i])))
+			_, y = self.get_fft(signals[i], frame_rate = frame_rate)
+			score[i] = np.max(y)
 
-		autocorrelations = np.array([self.measure_autocorrelation(signals[i]) for i in range(len(signals))])
-		print(autocorrelations)
-		return signals[np.argmax(autocorrelations)]
+		# autocorrelations = np.array([self.measure_autocorrelation(signals[i]) for i in range(len(signals))])
+		return signals[np.argmax(score)]
 
 	def measure_reference(self, frame_rate = 30, window_size = 45):
 		self.temporal_means = np.append(self.left_cheek_means, self.right_cheek_means, axis = 1)
@@ -65,8 +67,10 @@ class ICA(DefaultStrategy):
 		if plot == True:
 			plt.title("ICA")
 			plt.subplot(4, 1, 1)
-			for i in range(self.temporal_means.shape[1]):
-				plt.plot(self.temporal_means.T[i])
+
+			labels = ['r', 'g', 'b']
+			for i in range(3):
+				plt.plot(self.temporal_means.T[i], labels[i])
 
 			plt.subplot(4, 1, 2)
 			for i in range(len(signals)):
