@@ -26,30 +26,29 @@ import cv2
 import os
 
 class VideoLoader:
-	def __init__(self, window_size = 15, roi_extractor = CheeksAndNose()):
+	def __init__(self, time = 10, roi_extractor = CheeksAndNose()):
 		self.face_predictor = LandmarkPredictor()
 		self.roi_extractor = roi_extractor
-		self.window_size = window_size
+		self.time = time
 
 	def is_valid_video(self, filename):
 		valid_extensions = ["avi", "mp4", "mov"]
 		extension = filename.split('.')[-1]
 		return extension in valid_extensions
 
-	def split_raw_data(self, raw_data, stride = 1):
-		index, data = [0, None]
-		while index + self.window_size < len(raw_data):
-			data = np.array([raw_data[index : index + self.window_size]]) if (data is None) else np.append(data, [raw_data[index : index + self.window_size]], axis = 0)
-			index += stride
+	# def split_raw_data(self, raw_data, split_size = 15 * 30, stride = 1):
+	# 	while index + self.time < len(raw_data):
+	# 		data = np.array([raw_data[index : index + self.time]]) if (data is None) else np.append(data, [raw_data[index : index + self.time]], axis = 0)
+	# 		index += stride
 
-		return data
+	# 	return data
 
 	def load_video(self, filename):
 		if self.is_valid_video(filename):
 			stream = cv2.VideoCapture(filename)
-			current_frame = 0
+			frame_rate, current_frame = int(stream.get(cv2.CAP_PROP_FPS)), 0
 			means = None
-			while True:
+			while current_frame < frame_rate * self.time:
 				success, frame = stream.read()
 				if not success:
 					break
@@ -76,30 +75,43 @@ class VideoLoader:
 
 					current_frame += 1
 
-			return self.split_raw_data(means, stride = 15)
+			return means
 		else:
 			print("[VideoLoader] Skipping '{0}'. Reason: Invalid Video! (It's a folder??)".format(filename))
 			return None
 
 class DataLoader:
-	def __init__(self, folder, file_list = None, window_size = 15, roi_extractor = CheeksAndNose()):
+	def __init__(self, folder, file_list = None, time = 15, num_channels = 3, roi_extractor = CheeksAndNose()):
 		self.roi_extractor = roi_extractor
-		self.window_size = window_size
+		self.num_channels = num_channels
+		self.time = time
+
 		self.file_list = file_list
 		self.folder = folder
 
-		self.loader = VideoLoader(window_size = window_size, roi_extractor = roi_extractor)
+		self.loader = VideoLoader(time = time, roi_extractor = roi_extractor)
 
 	def load_data(self):
-		data = None
+		data_size = len(self.file_list) if self.file_list is not None else len(os.listdir(self.folder))
+		data, k = [None, 0]
 		for filename in sorted(os.listdir(self.folder)):
 			if (self.file_list is None) or ((self.file_list is not None) and (filename in self.file_list)):
 				video_data = self.loader.load_video(self.folder + '/' + filename)
-				if video_data is not None:					
-					data = video_data if (data is None) else np.append(data, video_data, axis = 0)
+
+				if (video_data is not None) and (data is None):
+					data = np.empty([data_size, len(video_data), self.num_channels])				
+
+				if video_data is not None:
+					video_data = video_data if video_data.shape[0] == data.shape[1] else video_data[:data.shape[1], :]
+					data[k] = video_data
+					k += 1
 
 		print(data.shape)
 		return data
 		
 if __name__ == "__main__":
-	DataLoader(folder = "./videos").load_data()
+	fake_data = DataLoader(folder = "./videos/Fake", time = 10).load_data()
+	real_data = DataLoader(folder = "./videos/Real", time = 10).load_data()
+
+	print(fake_data.shape)
+	print(real_data.shape)
