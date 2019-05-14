@@ -27,7 +27,6 @@ import os
 
 class VideoLoader:
 	def __init__(self, time = 10, roi_extractor = CheeksAndNose()):
-		self.face_predictor = LandmarkPredictor()
 		self.roi_extractor = roi_extractor
 		self.time = time
 
@@ -36,29 +35,46 @@ class VideoLoader:
 		extension = filename.split('.')[-1]
 		return extension in valid_extensions
 
-	# def split_raw_data(self, raw_data, split_size = 15 * 30, stride = 1):
-	# 	while index + self.time < len(raw_data):
-	# 		data = np.array([raw_data[index : index + self.time]]) if (data is None) else np.append(data, [raw_data[index : index + self.time]], axis = 0)
-	# 		index += stride
+	def get_video_info(self, filename):
+		if not self.is_valid_video(filename):
+			return -1, -1
+		else:
+			stream = cv2.VideoCapture(filename)
+			frame_count = int(stream.get(cv2.CAP_PROP_FRAME_COUNT))
+			frame_rate = int(stream.get(cv2.CAP_PROP_FPS))
+			stream.release()
 
-	# 	return data
+			return frame_rate, frame_count
 
-	def load_video(self, filename):
+	# Cortar dados de forma que vídeos maiores que o necessário se transformem em mais que apenas uma sequência. (E sim em várias)
+	# Um vídeo de 450 frames (a 30 fps) pode ser cortado em 150 * 300 frames.
+	def split_raw_data(self, raw_data, split_size, stride = 1):
+		data, i = [], 0
+		while i + split_size < len(raw_data):
+			data += [raw_data[i : i + split_size, :]]
+			i += stride
+
+		return np.array(data)
+
+	def load_video(self, filename, max_cut_size):
 		if self.is_valid_video(filename):
 			stream = cv2.VideoCapture(filename)
+			face_predictor = LandmarkPredictor()
 			frame_rate, current_frame = int(stream.get(cv2.CAP_PROP_FPS)), 0
-			means = None
-			while current_frame < frame_rate * self.time:
+			means = []
+
+			cut_size = min(self.time * frame_rate, max_cut_size)
+			while True:
 				success, frame = stream.read()
 				if not success:
 					break
 
-				face_rect = self.face_predictor.detect_face(image = frame)
+				face_rect = face_predictor.detect_face(image = frame)
 				if face_rect is not None:
 					face_left, face_right, face_top, face_bottom = face_rect.left(), face_rect.right(), face_rect.top(), face_rect.bottom()
 					cut_face = frame[face_top : face_bottom, face_left : face_right, :]
-					landmarks = self.face_predictor.detect_landmarks(image = cut_face)
 
+					landmarks = face_predictor.detect_landmarks(image = cut_face)
 					roi = self.roi_extractor.extract_roi(cut_face, landmarks)
 					
 					if current_frame % 60 == 0 and current_frame > 0:
@@ -71,7 +87,7 @@ class VideoLoader:
 					g = np.nanmean(roi[:, :, 1])
 					b = np.nanmean(roi[:, :, 0])
 
-					means = np.array([[r, g, b]]) if (means is None) else np.append(means, [[r, g, b]], axis = 0)
+					means += [[r, g, b]]
 
 					current_frame += 1
 
@@ -91,27 +107,31 @@ class DataLoader:
 
 		self.loader = VideoLoader(time = time, roi_extractor = roi_extractor)
 
+	def get_min_frame_count(self):
+		min_frame_count = (1 << 32)
+		for filename in sorted(os.listdir(self.folder)):
+			_, frame_count = self.loader.get_video_info(filename)
+			min_frame_count = min_frame_count if frame_count <= 0 else min(min_frame_count, frame_count)
+
+		return min_frame_count
+
 	def load_data(self):
-		data_size = len(self.file_list) if self.file_list is not None else len(os.listdir(self.folder))
-		data, k = [None, 0]
+		min_frame_count = self.get_min_frame_count()
+		data = []
 		for filename in sorted(os.listdir(self.folder)):
 			if (self.file_list is None) or ((self.file_list is not None) and (filename in self.file_list)):
-				video_data = self.loader.load_video(self.folder + '/' + filename)
-
-				if (video_data is not None) and (data is None):
-					data = np.empty([data_size, len(video_data), self.num_channels])				
-
+				video_data = self.loader.load_video(filename = self.folder + '/' + filename, max_cut_size = min_frame_count)
 				if video_data is not None:
-					video_data = video_data if video_data.shape[0] == data.shape[1] else video_data[:data.shape[1], :]
-					data[k] = video_data
-					k += 1
+					data += [video_data]
 
-		print(data.shape)
+		# print(np.array(video_data).shape)
+		# print(data.shape)
+		print(len(data))
 		return data
 		
 if __name__ == "__main__":
-	fake_data = DataLoader(folder = "./videos/Fake", time = 10).load_data()
-	real_data = DataLoader(folder = "./videos/Real", time = 10).load_data()
+	fake_data = DataLoader(folder = "./videos/Fake", time = 5).load_data()
+	real_data = DataLoader(folder = "./videos/Real", time = 5).load_data()
 
-	print(fake_data.shape)
-	print(real_data.shape)
+	# print(fake_data.shape)
+	# print(real_data.shape)
