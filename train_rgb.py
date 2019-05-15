@@ -46,24 +46,13 @@ class VideoLoader:
 
 			return frame_rate, frame_count
 
-	# Cortar dados de forma que vídeos maiores que o necessário se transformem em mais que apenas uma sequência. (E sim em várias)
-	# Um vídeo de 450 frames (a 30 fps) pode ser cortado em 150 * 300 frames.
-	def split_raw_data(self, raw_data, split_size, stride = 1):
-		data, i = [], 0
-		while i + split_size < len(raw_data):
-			data += [raw_data[i : i + split_size, :]]
-			i += stride
-
-		return np.array(data)
-
-	def load_video(self, filename, max_cut_size):
+	def load_video(self, filename):
 		if self.is_valid_video(filename):
 			stream = cv2.VideoCapture(filename)
 			face_predictor = LandmarkPredictor()
 			frame_rate, current_frame = int(stream.get(cv2.CAP_PROP_FPS)), 0
 			means = []
 
-			cut_size = min(self.time * frame_rate, max_cut_size)
 			while True:
 				success, frame = stream.read()
 				if not success:
@@ -107,31 +96,38 @@ class DataLoader:
 
 		self.loader = VideoLoader(time = time, roi_extractor = roi_extractor)
 
-	def get_min_frame_count(self):
-		min_frame_count = (1 << 32)
-		for filename in sorted(os.listdir(self.folder)):
-			_, frame_count = self.loader.get_video_info(filename)
-			min_frame_count = min_frame_count if frame_count <= 0 else min(min_frame_count, frame_count)
+	def split_raw_data(self, raw_data, split_size, stride = 1):
+		data, i = None, 0
+		while i + split_size - 1 < len(raw_data):
+			data = np.array([raw_data[i : i + split_size, :]]) if data is None else np.append(data, np.array([raw_data[i : i + split_size, :]]), axis = 0)
+			i += stride
 
-		return min_frame_count
+		return data
+
+	def post_process(self, data, frame_rate = 25):
+		min_data_size = min([len(data[i]) for i in range(len(data))])
+		min_data_size = min(min_data_size, self.time * frame_rate)
+		final_data = None
+
+		for i in range(len(data)):
+			sub_videos = self.split_raw_data(np.array(data[i]), split_size = min_data_size, stride = 1)
+			final_data = sub_videos if final_data is None else np.append(final_data, sub_videos, axis = 0)
+
+		return final_data
 
 	def load_data(self):
-		min_frame_count = self.get_min_frame_count()
 		data = []
 		for filename in sorted(os.listdir(self.folder)):
 			if (self.file_list is None) or ((self.file_list is not None) and (filename in self.file_list)):
-				video_data = self.loader.load_video(filename = self.folder + '/' + filename, max_cut_size = min_frame_count)
+				video_data = self.loader.load_video(filename = self.folder + '/' + filename)
 				if video_data is not None:
 					data += [video_data]
 
-		# print(np.array(video_data).shape)
-		# print(data.shape)
-		print(len(data))
-		return data
+		return self.post_process(data)
 		
 if __name__ == "__main__":
 	fake_data = DataLoader(folder = "./videos/Fake", time = 5).load_data()
 	real_data = DataLoader(folder = "./videos/Real", time = 5).load_data()
 
-	# print(fake_data.shape)
-	# print(real_data.shape)
+	print(fake_data.shape)
+	print(real_data.shape)
