@@ -124,10 +124,17 @@ class DataLoader:
 					data += [video_data]
 
 		return self.post_process(data)
+
+class ReplayAttackLoader:
+	def load_data(self, folder, time):
+		fake = DataLoader(folder = folder + "/attack", time = time).load_data()
+		real = DataLoader(folder = folder + "/real", time = time).load_data()
+		labels = np.append(np.zeros(fake.shape[0]), np.ones(real.shape[0]))
+		return np.append(real, fake, axis = 0), labels
 		
 if __name__ == "__main__":
-	fake_data = DataLoader(folder = "./videos/Fake", time = 5).load_data()
-	real_data = DataLoader(folder = "./videos/Real", time = 5).load_data()
+	loader = ReplayAttackLoader()
+	x, y = loader.load_data(folder = "./videos/teste", time = 5)
 
-	print(fake_data.shape)
-	print(real_data.shape)
+	print(x.shape)
+	print(y.shape)
