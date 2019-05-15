@@ -7,7 +7,7 @@
 			1.1 - Definir classe para carregamento de dados. (Tentar desenvolver de modo que seja possível escolher quais arquivos serão carregados)
 			1.2 - Escrever código simples para 'argparse'.
 			1.3 - De que modo a estratégia será passada para a rede? Qual a saída? Será sempre um vetor com o tamanho da quantidade de frames?
-		
+		-------------------------------------------------------------------------------------
 		2. Montar a rede. (Keras ou Tensorflow?)
 			2.1 - Aprender a verificar se alguém está utilizando alguma gpu.
 			2.2 - Testar antes na máquina local.
@@ -79,6 +79,9 @@ class VideoLoader:
 					means += [[r, g, b]]
 
 					current_frame += 1
+				else:
+					print("[VideoLoader] Skipping '{0}'. Reason: Failure on Acquisition! (It's a folder??)".format(filename))
+					return None
 
 			return means
 		else:
@@ -116,9 +119,12 @@ class DataLoader:
 		return final_data
 
 	def load_data(self):
-		data = []
+		counter, data = 0, []
+		dir_size = len(os.listdir(self.folder))
 		for filename in sorted(os.listdir(self.folder)):
+			counter += 1
 			if (self.file_list is None) or ((self.file_list is not None) and (filename in self.file_list)):
+				print("[DataLoader - {0} / {1}] Trying to load video '{2}'.".format(counter, dir_size, filename))
 				video_data = self.loader.load_video(filename = self.folder + '/' + filename)
 				if video_data is not None:
 					data += [video_data]
@@ -126,15 +132,64 @@ class DataLoader:
 		return self.post_process(data)
 
 class ReplayAttackLoader:
+	def custom_shuffle(self, a, b):
+		assert len(a) == len(b)
+		p = np.random.permutation(len(a))
+		return a[p], b[p]
+
 	def load_data(self, folder, time):
-		fake = DataLoader(folder = folder + "/attack", time = time).load_data()
-		real = DataLoader(folder = folder + "/real", time = time).load_data()
+		print("[ReplayAttackLoader] Loading ReplayAttack videos from '{0}/'.".format(folder))
+		fake = DataLoader(folder = folder + "/attack/fixed", time = time).load_data() # Estou carregando apenas os vídeos com câmera fixa.
+		real = DataLoader(folder = folder + "/real", time = time).load_data() # Estou carregando apenas os vídeos com câmera fixa.
 		labels = np.append(np.zeros(fake.shape[0]), np.ones(real.shape[0]))
-		return np.append(real, fake, axis = 0), labels
+		return self.custom_shuffle(np.append(real, fake, axis = 0), to_categorical(labels, 2))
+
+from keras.layers import Flatten, Dense, LSTM, Reshape, Conv1D, MaxPooling1D, BatchNormalization, Activation
+from keras.models import Sequential
+from keras.optimizers import Adam
+from keras.utils import to_categorical
+
+def build_cnn_model(frame_count, frame_rate):
+	model = Sequential()
+
+	model.add(Reshape((frame_count // frame_rate, frame_rate), input_shape = (frame_count,)))
+	units = [16]
+	for u in units:
+		model.add(BatchNormalization())
+		model.add(Conv1D(filters = u, kernel_size = 11, padding = 'same'))
+		model.add(MaxPooling1D(pool_size = 3, strides = 2))
+		model.add(Activation("elu"))
+
+	model.add(LSTM(units = 16))
+
+	# model.add(Flatten())
+	model.add(Dense(2, activation = "sigmoid"))
+
+	model.compile(
+		optimizer = Adam(lr = 1e-4),
+		loss = "binary_crossentropy",
+		metrics = ["accuracy"]
+	)
+
+	model.summary()
+	return model
 		
 if __name__ == "__main__":
+	time, frame_rate = [5, 25] # Generalizar o frame_rate?
 	loader = ReplayAttackLoader()
-	x, y = loader.load_data(folder = "./videos/teste", time = 5)
 
-	print(x.shape)
-	print(y.shape)
+	t_x, t_y = loader.load_data(folder = "./videos/ReplayAttack/train", time = 5)
+	v_x, v_y = loader.load_data(folder = "./videos/ReplayAttack/devel", time = 5)
+
+	# Verificar se é necessário processar ou apenas carregar. (argparse)
+	np.save("./videos/train_x.npy", t_x)
+	np.save("./videos/train_y.npy", t_y)
+
+	np.save("./videos/validation_x.npy", v_x)
+	np.save("./videos/validation_y.npy", v_y)
+
+	print("Train shape: {0}".format(t_x.shape))
+	print("Validation shape: {0}".format(v_x.shape))
+
+	model = build_cnn_model(frame_count = time * frame_rate, frame_rate = frame_rate)
+	model.fit(x = t_x[:, :, 1], y = t_y, validation_data = (v_x[:, :, 1], v_y), batch_size = 8, epochs = 500)
