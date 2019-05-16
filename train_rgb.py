@@ -139,8 +139,11 @@ class ReplayAttackLoader:
 
 	def load_data(self, folder, time):
 		print("[ReplayAttackLoader] Loading ReplayAttack videos from '{0}/'.".format(folder))
-		fake = DataLoader(folder = folder + "/attack/fixed", time = time).load_data() # Estou carregando apenas os vídeos com câmera fixa.
-		real = DataLoader(folder = folder + "/real", time = time).load_data() # Estou carregando apenas os vídeos com câmera fixa.
+		fake_fixed = DataLoader(folder = folder + "/attack/fixed", time = time).load_data()
+		fake_hand = DataLoader(folder = folder + "/attack/hand", time = time).load_data()
+		fake = np.append(fake_hand, fake_fixed, axis = 0)
+
+		real = DataLoader(folder = folder + "/real", time = time).load_data()
 		labels = np.append(np.zeros(fake.shape[0]), np.ones(real.shape[0]))
 		return self.custom_shuffle(np.append(real, fake, axis = 0), to_categorical(labels, 2))
 
@@ -149,7 +152,18 @@ from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.utils import to_categorical
 
+# Pred: 0 0 0 1
+# True: 0 1 1 0
+#  Ans: 0 1 1 0
+
+#Construir as métricas!
 def build_cnn_model(frame_count, frame_rate):
+	import keras.backend as K
+	def false_negative_rate(y_true, y_pred):
+		y_pred = K.argmax(y_pred, axis = 1)
+		y_true = K.argmax(y_true, axis = 1)
+		return K.mean(K.equal(y_true != y_pred, y_true == 1))
+
 	model = Sequential()
 
 	model.add(Reshape((frame_count // frame_rate, frame_rate), input_shape = (frame_count,)))
@@ -168,28 +182,54 @@ def build_cnn_model(frame_count, frame_rate):
 	model.compile(
 		optimizer = Adam(lr = 1e-4),
 		loss = "binary_crossentropy",
-		metrics = ["accuracy"]
+		metrics = ["accuracy", false_negative_rate]
 	)
 
 	model.summary()
 	return model
+
+import argparse
+
+def build_parser():
+	parser = argparse.ArgumentParser(description = "Código para treino das redes neurais utilizadas para detecção de ataques de apresentação.")
+	parser.add_argument("dataset_folder", nargs = None, default = None, action = "store",
+						help = "Localização da pasta do dataset. (Padrão: %(default)s)")
+	parser.add_argument("process_folder", nargs = None, default = None, action = "store",
+						help = "Localização da pasta onde serão (ou foram) armazenados os dados processados. (Padrão: %(default)s)")
+	parser.add_argument("--time", dest = "time", nargs = "?", default = 5, action = "store", type = int,
+						help = "Tempo (em segundos) de captura ou análise. (Padrão: %(default)s segundos)")
+	parser.add_argument("--process", dest = "process_data", action = "store_true", default = False,
+						help = "Define se serão obtidas novas médias a partir do dataset informado. (Padrão: %(default)s)")
+	# parser.add_argument("--aproach", dest = "aproach", nargs = "?", default = ["DeHaan", "DeHaanPOS", "ICA"], action = "store",
+	# 					help = "Abordagem no cálculo do rPPG. (Padrão: %(default)s)")
+	return parser
 		
 if __name__ == "__main__":
-	time, frame_rate = [5, 25] # Generalizar o frame_rate?
-	loader = ReplayAttackLoader()
+	t_x, t_y, v_x, v_y = None, None, None, None
+	frame_rate = 25 #Obter frame-rate a partir do dataset. Solução temporária.
+	
+	args = build_parser().parse_args()
+	if args.process_data is True:
+		loader = ReplayAttackLoader()
+		t_x, t_y = loader.load_data(folder = "{0}/train".format(args.dataset_folder), time = args.time)
+		v_x, v_y = loader.load_data(folder = "{0}/devel".format(args.dataset_folder), time = args.time)
 
-	t_x, t_y = loader.load_data(folder = "./videos/ReplayAttack/train", time = 5)
-	v_x, v_y = loader.load_data(folder = "./videos/ReplayAttack/devel", time = 5)
+		np.save("{0}/train_x.npy".format(args.process_folder), t_x)
+		np.save("{0}/train_y.npy".format(args.process_folder), t_y)
 
-	# Verificar se é necessário processar ou apenas carregar. (argparse)
-	np.save("./videos/train_x.npy", t_x)
-	np.save("./videos/train_y.npy", t_y)
+		np.save("{0}/validation_x.npy".format(args.process_folder), v_x)
+		np.save("{0}/validation_y.npy".format(args.process_folder), v_y)
+	else:
+		t_x = np.load("{0}/train_x.npy".format(args.process_folder))
+		t_y = np.load("{0}/train_y.npy".format(args.process_folder))
+		v_x = np.load("{0}/validation_x.npy".format(args.process_folder))
+		v_y = np.load("{0}/validation_y.npy".format(args.process_folder))
 
-	np.save("./videos/validation_x.npy", v_x)
-	np.save("./videos/validation_y.npy", v_y)
+	print("Total de exemplos positivos nos dados de treino: {0}".format(np.sum(np.argmax(t_y, axis = 1))))
+	print("Tamanho dos dados de treino: {0}".format(len(t_y)))
 
 	print("Train shape: {0}".format(t_x.shape))
 	print("Validation shape: {0}".format(v_x.shape))
 
-	model = build_cnn_model(frame_count = time * frame_rate, frame_rate = frame_rate)
-	model.fit(x = t_x[:, :, 1], y = t_y, validation_data = (v_x[:, :, 1], v_y), batch_size = 8, epochs = 500)
+	model = build_cnn_model(frame_count = args.time * frame_rate, frame_rate = frame_rate)
+	model.fit(x = t_x[:, :, 1], y = t_y, validation_data = (v_x[:, :, 1], v_y), batch_size = 32, epochs = 500)
