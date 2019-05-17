@@ -147,42 +147,51 @@ class ReplayAttackLoader:
 		labels = np.append(np.zeros(fake.shape[0]), np.ones(real.shape[0]))
 		return self.custom_shuffle(np.append(real, fake, axis = 0), to_categorical(labels, 2))
 
-from keras.layers import Flatten, Dense, LSTM, Reshape, Conv1D, MaxPooling1D, BatchNormalization, Activation
+from keras.layers import Flatten, Dense, LSTM, Reshape, Conv2D, MaxPooling2D, BatchNormalization, Activation
 from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.utils import to_categorical
 
 # Pred: 0 0 0 1
 # True: 0 1 1 0
-#  Ans: 0 1 1 0
+#  FP : 0 0 0 1
+#  FN : 0 1 1 0
 
 #Construir as métricas!
 def build_cnn_model(frame_count, frame_rate):
 	import keras.backend as K
-	def false_negative_rate(y_true, y_pred):
-		y_pred = K.argmax(y_pred, axis = 1)
-		y_true = K.argmax(y_true, axis = 1)
-		return K.mean(K.equal(y_true != y_pred, y_true == 1))
+	def FPR(y_true, y_pred):
+		y_true = K.argmax(y_true)
+		y_pred = K.argmax(y_pred)
+		return K.mean(K.all([1 - y_true, y_pred], axis = 0))
+
+	def FNR(y_true, y_pred):
+		y_true = K.argmax(y_true)
+		y_pred = K.argmax(y_pred)
+		return K.mean(K.all([1 - y_pred, y_true], axis = 0))
 
 	model = Sequential()
 
-	model.add(Reshape((frame_count // frame_rate, frame_rate), input_shape = (frame_count,)))
+	model.add(Reshape((frame_count // frame_rate, frame_rate, 3), input_shape = (frame_count, 3)))
 	units = [16]
 	for u in units:
 		model.add(BatchNormalization())
-		model.add(Conv1D(filters = u, kernel_size = 11, padding = 'same'))
-		model.add(MaxPooling1D(pool_size = 3, strides = 2))
+		for i in range(2):
+			model.add(Conv2D(filters = u, kernel_size = 3, strides = 1, padding = 'same'))
+			model.add(Activation("elu"))
+
+		model.add(MaxPooling2D(pool_size = 3, strides = 2))
 		model.add(Activation("elu"))
 
-	model.add(LSTM(units = 16))
+	model.add(Flatten())
+	# model.add(LSTM(units = 16))
 
-	# model.add(Flatten())
 	model.add(Dense(2, activation = "sigmoid"))
 
 	model.compile(
-		optimizer = Adam(lr = 1e-4),
+		optimizer = Adam(lr = 1e-5),
 		loss = "binary_crossentropy",
-		metrics = ["accuracy", false_negative_rate]
+		metrics = ["accuracy", FNR, FPR]
 	)
 
 	model.summary()
@@ -203,8 +212,25 @@ def build_parser():
 	# parser.add_argument("--aproach", dest = "aproach", nargs = "?", default = ["DeHaan", "DeHaanPOS", "ICA"], action = "store",
 	# 					help = "Abordagem no cálculo do rPPG. (Padrão: %(default)s)")
 	return parser
+
+from algorithms.de_haan_pos import DeHaanPOS
+
+def add_algorithm_info(data, frame_rate):
+	limit = 2000
+	# data_after_processing = np.empty([data.shape[0], data.shape[1], data.shape[2] + 1])
+	data_after_processing = np.empty([limit, data.shape[1], data.shape[2] + 1])
+	for i in range(limit):
+		if i > 0 and i % 500 == 0:
+			print("[PostProcessing] {0} / {1} temporal series processed.".format(i, len(data)))
+
+		rppg = DeHaanPOS(temporal_means = data[i]).measure_reference(frame_rate = frame_rate, window_size = int(frame_rate * 1.5))
+		data_after_processing[i] = np.append(data[i], np.reshape(rppg, (rppg.shape[0], 1)), axis = 1)
+	
+	return data_after_processing
 		
 if __name__ == "__main__":
+	os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+
 	t_x, t_y, v_x, v_y = None, None, None, None
 	frame_rate = 25 #Obter frame-rate a partir do dataset. Solução temporária.
 	
@@ -225,11 +251,11 @@ if __name__ == "__main__":
 		v_x = np.load("{0}/validation_x.npy".format(args.process_folder))
 		v_y = np.load("{0}/validation_y.npy".format(args.process_folder))
 
-	print("Total de exemplos positivos nos dados de treino: {0}".format(np.sum(np.argmax(t_y, axis = 1))))
-	print("Tamanho dos dados de treino: {0}".format(len(t_y)))
+	# print("Total de exemplos positivos nos dados de treino: {0}".format(np.sum(np.argmax(t_y, axis = 1))))
+	# print("Tamanho dos dados de treino: {0}".format(len(t_y)))
 
 	print("Train shape: {0}".format(t_x.shape))
 	print("Validation shape: {0}".format(v_x.shape))
 
 	model = build_cnn_model(frame_count = args.time * frame_rate, frame_rate = frame_rate)
-	model.fit(x = t_x[:, :, 1], y = t_y, validation_data = (v_x[:, :, 1], v_y), batch_size = 32, epochs = 500)
+	model.fit(x = t_x, y = t_y, validation_data = (v_x, v_y), batch_size = 8, epochs = 1)
