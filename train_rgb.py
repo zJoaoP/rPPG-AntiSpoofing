@@ -1,21 +1,8 @@
 '''
-	# Objetivo: Este arquivo possui (como objetivo principal) o treino de uma rede neural que recebe como entrada as features extraídas
-	pelo algoritmo proposto por Gerard De Haan (CHROM) e exportará True (Em caso de ataque de apresentação) ou False (Caso contrário).
-
-	# Etapas:
-		1. Carregar os dados. (OK)
-			1.1 - Definir classe para carregamento de dados. (Tentar desenvolver de modo que seja possível escolher quais arquivos serão carregados)
-			1.2 - Escrever código simples para 'argparse'.
-			1.3 - De que modo a estratégia será passada para a rede? Qual a saída? Será sempre um vetor com o tamanho da quantidade de frames?
-		-------------------------------------------------------------------------------------
-		2. Montar a rede. (Keras ou Tensorflow?)
-			2.1 - Aprender a verificar se alguém está utilizando alguma gpu.
-			2.2 - Testar antes na máquina local.
-			2.3 - Criar um ambiente virtual (venv).
-
-			2.4 - Devo usar uma FCN ou uma RNN?
-		
-		3. Treinar a rede.
+	Objetivos:
+		1 - Escrever um gerador de batches com o objetivo de balancear as classes.
+			- Fila circular
+			- Random Sample
 '''
 
 from utils.landmarks import LandmarkPredictor
@@ -138,27 +125,66 @@ class ReplayAttackLoader:
 		return a[p], b[p]
 
 	def load_data(self, folder, time):
+		def replace_array_by_cuts(raw_data_bucket, data_loader, split_size):
+			new_data = None
+			for i in range(len(raw_data_bucket)):
+				split = data_loader.split_raw_data(raw_data_bucket[i], split_size, stride = 1)
+				new_data = split if new_data is None else np.append(new_data, split, axis = 0)
+			
+			return new_data
+
 		print("[ReplayAttackLoader] Loading ReplayAttack videos from '{0}/'.".format(folder))
-		fake_fixed = DataLoader(folder = folder + "/attack/fixed", time = time).load_data()
-		fake_hand = DataLoader(folder = folder + "/attack/hand", time = time).load_data()
-		fake = np.append(fake_hand, fake_fixed, axis = 0)
+		fake_fixed_loader = DataLoader(folder = folder + "/attack/fixed", time = time)
+		fake_hand_loader = DataLoader(folder = folder + "/attack/hand", time = time)
+		fake_fixed_data = fake_fixed_loader.load_data()
+		fake_hand_data = fake_hand_loader.load_data()
 
-		real = DataLoader(folder = folder + "/real", time = time).load_data()
+		if fake_fixed_data.shape[1:] != fake_hand_data.shape[1:]:
+			if fake_fixed_data.shape[1] < fake_hand_data.shape[1]:
+				fake_hand_data = replace_array_by_cuts(fake_hand_data, fake_hand_loader, fake_fixed_data.shape[1])
+			else:
+				fake_fixed_data = replace_array_by_cuts(fake_fixed_data, fake_fixed_loader, fake_hand_data.shape[1])
+
+		fake = np.append(fake_hand_data, fake_fixed_data, axis = 0)
+
+		real_loader = DataLoader(folder = folder + "/real", time = time)
+		real = real_loader.load_data()
+		if fake.shape[1:] != real.shape[1:]:
+			if fake.shape[1] < real.shape[1]:
+				real = replace_array_by_cuts(real, real_loader, fake.shape[1])
+			else:
+				fake = replace_array_by_cuts(fake, real_loader, real.shape[1])
+
 		labels = np.append(np.zeros(fake.shape[0]), np.ones(real.shape[0]))
-		return self.custom_shuffle(np.append(real, fake, axis = 0), to_categorical(labels, 2))
+		return self.custom_shuffle(np.append(fake, real, axis = 0), to_categorical(labels, 2))
 
-from keras.layers import Flatten, Dense, LSTM, Reshape, Conv2D, MaxPooling2D, BatchNormalization, Activation
-from keras.models import Sequential
-from keras.optimizers import Adam
+
+from keras.layers import Conv1D, BatchNormalization, Activation, Input, Add, GlobalMaxPooling1D, Dense
 from keras.utils import to_categorical
+from keras.models import Model
 
-# Pred: 0 0 0 1
-# True: 0 1 1 0
-#  FP : 0 0 0 1
-#  FN : 0 1 1 0
+from keras.optimizers import Adam
 
 #Construir as métricas!
-def build_cnn_model(frame_count, frame_rate):
+def build_cnn_model(input_shape):
+	def resnet_block(input_layer, filters, name = "resnet_block_0", apply_activation = False):
+		branch = input_layer
+
+		branch = Conv1D(filters, kernel_size = 3, strides = 1, padding = 'same', use_bias = False, name = "{0}_Conv1D_1".format(name))(branch)
+		branch = BatchNormalization(name = "{0}_BN_1".format(name))(branch)
+		branch = Activation('relu', name = "{0}_ReLU_1".format(name))(branch)
+
+		branch = Conv1D(filters, kernel_size = 3, strides = 1, padding = 'same', use_bias = False, name = "{0}_Conv1D_2".format(name))(branch)
+
+		if apply_activation or (branch.shape[-1] != input_layer.shape[-1]):
+			input_layer = Conv1D(filters, kernel_size = 3, strides = 1, padding = 'same', name = "{0}_Conv1D_Residual".format(name))(input_layer)
+
+		branch = Add()([branch, input_layer])
+		branch = BatchNormalization(name = "{0}_BN_F".format(name))(branch)
+		branch = Activation('relu', name = "{0}_ReLU_F".format(name))(branch)
+
+		return branch
+
 	import keras.backend as K
 	def FPR(y_true, y_pred):
 		y_true = K.argmax(y_true)
@@ -169,27 +195,20 @@ def build_cnn_model(frame_count, frame_rate):
 		y_true = K.argmax(y_true)
 		y_pred = K.argmax(y_pred)
 		return K.mean(K.all([1 - y_pred, y_true], axis = 0))
+	
+	filters = [16, 32, 64, 128]
+	
+	resnet_input = Input(shape = input_shape)
+	resnet = resnet_block(resnet_input, filters = 8, name = "resnet_block_0", apply_activation = True)
+	for i in range(len(filters)):
+		resnet = resnet_block(resnet, filters = filters[i], name = "resnet_block_{0}".format(i + 1), apply_activation = True)
 
-	model = Sequential()
+	resnet = GlobalMaxPooling1D()(resnet)
+	resnet = Dense(2, activation = 'softmax')(resnet)
 
-	model.add(Reshape((frame_count // frame_rate, frame_rate, 3), input_shape = (frame_count, 3)))
-	units = [16]
-	for u in units:
-		model.add(BatchNormalization())
-		for i in range(2):
-			model.add(Conv2D(filters = u, kernel_size = 3, strides = 1, padding = 'same'))
-			model.add(Activation("elu"))
-
-		model.add(MaxPooling2D(pool_size = 3, strides = 2))
-		model.add(Activation("elu"))
-
-	model.add(Flatten())
-	# model.add(LSTM(units = 16))
-
-	model.add(Dense(2, activation = "sigmoid"))
-
+	model = Model(inputs = resnet_input, outputs = resnet)
 	model.compile(
-		optimizer = Adam(lr = 1e-5),
+		optimizer = Adam(lr = 1e-6),
 		loss = "binary_crossentropy",
 		metrics = ["accuracy", FNR, FPR]
 	)
@@ -227,7 +246,45 @@ def add_algorithm_info(data, frame_rate):
 		data_after_processing[i] = np.append(data[i], np.reshape(rppg, (rppg.shape[0], 1)), axis = 1)
 	
 	return data_after_processing
+	
+from keras.utils import Sequence	
+class DataGenerator(Sequence):
+	def __init__(self, train_x, train_y, batch_size = 32):
+		self.batch_size = batch_size
+
+		self.fake_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 0])
+		self.real_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 1])
+		self.real_indexes = np.arange(len(self.real_x))
+		self.fake_indexes = np.arange(len(self.fake_x))
+
+		for i in range(len(self.real_x)):
+			self.real_x[i] = self.real_x[i] / np.mean(self.real_x[i])
+
+		for i in range(len(self.fake_x)):
+			self.fake_x[i] = self.fake_x[i] / np.mean(self.fake_x[i])
+
+	def on_epoch_end(self):
+		self.real_indexes = np.arange(len(self.real_x))
+		self.fake_indexes = np.arange(len(self.fake_x))
+
+	# https://stackoverflow.com/questions/4601373/better-way-to-shuffle-two-numpy-arrays-in-unison
+	def shuffle(self, a, b):
+		assert len(a) == len(b)
+		p = np.random.permutation(len(a))
+		return a[p], b[p]
+
+	def __len__(self):
+		return min(len(self.fake_x), len(self.real_x)) // self.batch_size
+
+	def __getitem__(self, index):
+		real_indexes = self.real_indexes[index : index + (self.batch_size // 2)]
+		fake_indexes = self.fake_indexes[index : index + (self.batch_size // 2)]
 		
+		x = np.append(np.take(self.fake_x, fake_indexes, axis = 0), np.take(self.real_x, real_indexes, axis = 0), axis = 0)
+		y = np.append(np.zeros(self.batch_size // 2), np.ones(self.batch_size // 2))
+
+		return self.shuffle(x, to_categorical(y, 2))
+
 if __name__ == "__main__":
 	os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
@@ -257,5 +314,8 @@ if __name__ == "__main__":
 	print("Train shape: {0}".format(t_x.shape))
 	print("Validation shape: {0}".format(v_x.shape))
 
-	model = build_cnn_model(frame_count = args.time * frame_rate, frame_rate = frame_rate)
-	model.fit(x = t_x, y = t_y, validation_data = (v_x, v_y), batch_size = 8, epochs = 1)
+	model = build_cnn_model(input_shape = t_x[0].shape)
+
+	validation_generator = DataGenerator(v_x, v_y, batch_size = 8)
+	train_generator = DataGenerator(t_x, t_y, batch_size = 8)
+	model.fit_generator(epochs = 100, generator = train_generator, validation_data = validation_generator)
