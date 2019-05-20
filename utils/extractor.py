@@ -9,7 +9,7 @@ class Extractor:
 
 	def remove_pixels_inside(self, image, polygon):
 		mask = np.ones(image.shape, dtype = np.uint8)
-		cv2.fillPoly(mask, np.array(polygon, dtype = np.int32), color = (0,) * image.shape[2])
+		cv2.fillPoly(mask, np.array([polygon], dtype = np.int32), color = (0,) * image.shape[2])
 		return image * mask
 
 	def extract_points(self, landmarks, index_list):
