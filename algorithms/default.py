@@ -34,16 +34,16 @@ class DefaultStrategy:
 	def uses_nir(self):
 		return False
 		
-	def moving_window_normalization(self, values, window_size):
-		windowed_normalization = np.zeros([len(values)])
+	def moving_average(self, values, window_size):
+		m_average = np.zeros([len(values)])
 		left, right = (0, window_size)
 		for i in range(len(values)):
-			windowed_normalization[i] = values[i] / np.mean(values[i - left : i + right])
+			m_average[i] = np.mean(values[i - left : i + right])
 			if (left + 1 < right) or (i + right == len(values)):
 				left += 1
 				right -= 1
 
-		return windowed_normalization
+		return m_average[window_size // 2 : len(values) - window_size]
 
 	def get_fft(self, y, frame_rate = 30):
 		sample_rate = 1.0 / float(frame_rate)
