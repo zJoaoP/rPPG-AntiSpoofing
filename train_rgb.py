@@ -274,6 +274,53 @@ class DataGenerator(Sequence):
 
 		return self.shuffle(x, to_categorical(y, 2))
 
+from keras.callbacks import Callback
+import keras.backend as K
+
+class RestoreModelOnPlateau(Callback):
+	def __init__(self, monitor = "val_loss", mode = "min", patience = 5, min_lr = 1e-5, verbose = 1, factor = 0.1, save_location = 'plateau.hdf5'):
+		super(RestoreModelOnPlateau, self).__init__()
+
+		self.save_location = save_location
+		self.current_patience = 0
+		self.patience = patience
+		self.monitor = monitor
+		self.verbose = verbose
+		self.factor = factor
+		self.min_lr = min_lr
+
+		self.current_best = np.inf if mode == "min" else -np.inf		
+		if mode == "min":
+			self.is_new_best = lambda x: x < self.current_best
+		else:
+			self.is_new_best = lambda x: x > self.current_best
+
+	def on_epoch_end(self, epoch, logs):
+		current = logs.get(self.monitor)
+		if self.is_new_best(current):
+			if self.verbose:
+				print("\n[RestoreModelOnPlateau - Epoch {0}] Found new best value to '{1}': {2:4f} to {3:4f}.\n".format(
+					epoch + 1, self.monitor, self.current_best, current)
+				)
+
+			self.model.save(self.save_location)
+			self.current_best = current
+			self.current_patience = 0
+		else:
+			self.current_patience += 1
+			if self.current_patience == self.patience:
+				self.current_patience = 0
+				old_lr = float(K.get_value(self.model.optimizer.lr))
+				if old_lr > self.min_lr:
+					new_lr = old_lr * self.factor
+					K.set_value(self.model.optimizer.lr, new_lr)
+					self.model.load_weights(self.save_location)
+
+					if self.verbose:
+						print("\n[RestoreModelOnPlateau - Epoch {0}] Restoring model rate after {1} epochs without progress: learning rate from {2} to {3}.\n".format(
+							epoch + 1, self.patience, old_lr, new_lr)
+						)
+
 if __name__ == "__main__":
 	os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 
@@ -306,19 +353,12 @@ if __name__ == "__main__":
 	t_x = t_x / 255.0
 	v_x = v_x / 255.0
 
-	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
-	from itertools import product
+	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, ReduceLROnPlateau
 
-	lr = [1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
-	batch_size = [4, 8, 16, 32]
-	for learning_rate, batch_size in product(lr, batch_size):
-		model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = learning_rate)
-		
-		model_name = "lr={0}_batch_size={1}".format(learning_rate, batch_size)
-		
-		tensorboard = TensorBoard(log_dir = './logs/{0}/'.format(model_name))
-		model_checkpoint = ModelCheckpoint("./models/{0}".format(model_name) + "_{epoch:02d}-{val_acc:.2f}.hdf5", monitor = "val_loss", save_best_only = True)
-		early_stopping = EarlyStopping(monitor = "val_loss", patience = 50, verbose = 0)
+	model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = 0.1)
+	
+	model_checkpoint = ModelCheckpoint("./models/0.1_plateau_{epoch:02d}-{val_loss:.2f}.hdf5", monitor = "val_loss", save_best_only = True, verbose = 1)
+	restore_on_plateau = RestoreModelOnPlateau(patience = 50, min_lr = 0.0001, save_location = './models/iLR_0.1_bs_8_plateau.hdf5')
 
-		train_generator = DataGenerator(t_x, t_y, batch_size = batch_size)
-		results = model.fit_generator(epochs = 5000, generator = train_generator, validation_data = (v_x, v_y), callbacks = [model_checkpoint, early_stopping, tensorboard])
+	train_generator = DataGenerator(t_x, t_y, batch_size = 8)
+	results = model.fit_generator(epochs = 1000, generator = train_generator, validation_data = (v_x, v_y), callbacks = [restore_on_plateau])
