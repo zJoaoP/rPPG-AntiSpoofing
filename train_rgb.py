@@ -269,9 +269,6 @@ class DataGenerator(Sequence):
 		x = np.append(np.take(self.fake_x, fake_indexes, axis = 0), np.take(self.real_x, real_indexes, axis = 0), axis = 0)
 		y = np.append(np.zeros(self.batch_size // 2), np.ones(self.batch_size // 2))
 
-		# for i in range(self.batch_size):
-		# 	x[i] = x[i] + np.random.normal(size = x[i].shape) * self.noise_weight
-
 		return self.shuffle(x, to_categorical(y, 2))
 
 from keras.callbacks import Callback
@@ -317,7 +314,7 @@ class RestoreModelOnPlateau(Callback):
 					self.model.load_weights(self.save_location)
 
 					if self.verbose:
-						print("\n[RestoreModelOnPlateau - Epoch {0}] Restoring model rate after {1} epochs without progress: learning rate from {2} to {3}.\n".format(
+						print("\n[RestoreModelOnPlateau - Epoch {0}] Restoring best model after {1} epochs without progress: learning rate from {2} to {3}.\n".format(
 							epoch + 1, self.patience, old_lr, new_lr)
 						)
 
@@ -355,10 +352,11 @@ if __name__ == "__main__":
 
 	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, ReduceLROnPlateau
 
-	model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = 0.1)
+	model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = 1.0)
 	
 	model_checkpoint = ModelCheckpoint("./models/0.1_plateau_{epoch:02d}-{val_loss:.2f}.hdf5", monitor = "val_loss", save_best_only = True, verbose = 1)
-	restore_on_plateau = RestoreModelOnPlateau(patience = 50, min_lr = 0.0001, save_location = './models/iLR_0.1_bs_8_plateau.hdf5')
+	restore_on_plateau = RestoreModelOnPlateau(patience = 100, min_lr = 1e-4, factor = 0.1, save_location = './models/LR_1_bs_8_plateau.hdf5')
+	tensorboard = TensorBoard(log_dir = './logs/lr_1_bs_8_plateau/')
 
 	train_generator = DataGenerator(t_x, t_y, batch_size = 8)
-	results = model.fit_generator(epochs = 1000, generator = train_generator, validation_data = (v_x, v_y), callbacks = [restore_on_plateau])
+	results = model.fit_generator(epochs = 5000, generator = train_generator, validation_data = (v_x, v_y), callbacks = [restore_on_plateau, tensorboard])
