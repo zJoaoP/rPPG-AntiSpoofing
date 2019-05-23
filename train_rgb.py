@@ -1,10 +1,3 @@
-'''
-	Objetivos:
-		1 - Escrever um gerador de batches com o objetivo de balancear as classes.
-			- Fila circular
-			- Random Sample
-'''
-
 from utils.landmarks import LandmarkPredictor
 from utils.extractor import CheeksAndNose
 
@@ -70,7 +63,7 @@ class VideoLoader:
 					print("[VideoLoader] Skipping '{0}'. Reason: Failure on Acquisition! (It's a folder??)".format(filename))
 					return None
 
-			return means
+			return np.array(means)
 		else:
 			print("[VideoLoader] Skipping '{0}'. Reason: Invalid Video! (It's a folder??)".format(filename))
 			return None
@@ -89,21 +82,22 @@ class DataLoader:
 	def split_raw_data(self, raw_data, split_size, stride = 1):
 		data, i = None, 0
 		while i + split_size - 1 < len(raw_data):
+			print(type(raw_data))
 			data = np.array([raw_data[i : i + split_size, :]]) if data is None else np.append(data, np.array([raw_data[i : i + split_size, :]]), axis = 0)
 			i += stride
 
 		return data
 
-	def post_process(self, data, frame_rate = 25):
-		min_data_size = min([len(data[i]) for i in range(len(data))])
-		min_data_size = min(min_data_size, self.time * frame_rate)
-		final_data = None
+	# def post_process(self, data, frame_rate = 25):
+	# 	min_data_size = min([len(data[i]) for i in range(len(data))])
+	# 	min_data_size = min(min_data_size, self.time * frame_rate)
+	# 	final_data = None
 
-		for i in range(len(data)):
-			sub_videos = self.split_raw_data(np.array(data[i]), split_size = min_data_size, stride = 1)
-			final_data = sub_videos if final_data is None else np.append(final_data, sub_videos, axis = 0)
+	# 	for i in range(len(data)):
+	# 		sub_videos = self.split_raw_data(np.array(data[i]), split_size = min_data_size, stride = 1)
+	# 		final_data = sub_videos if final_data is None else np.append(final_data, sub_videos, axis = 0)
 
-		return final_data
+	# 	return final_data
 
 	def load_data(self):
 		counter, data = 0, []
@@ -116,7 +110,7 @@ class DataLoader:
 				if video_data is not None:
 					data += [video_data]
 
-		return self.post_process(data)
+		return data
 
 class ReplayAttackLoader:
 	def custom_shuffle(self, a, b):
@@ -136,56 +130,36 @@ class ReplayAttackLoader:
 		print("[ReplayAttackLoader] Loading ReplayAttack videos from '{0}/'.".format(folder))
 		fake_fixed_loader = DataLoader(folder = folder + "/attack/fixed", time = time)
 		fake_hand_loader = DataLoader(folder = folder + "/attack/hand", time = time)
+		real_loader = DataLoader(folder = folder + "/real", time = time)
+
 		fake_fixed_data = fake_fixed_loader.load_data()
 		fake_hand_data = fake_hand_loader.load_data()
+		real = real_loader.load_data()
 
-		if fake_fixed_data.shape[1:] != fake_hand_data.shape[1:]:
-			if fake_fixed_data.shape[1] < fake_hand_data.shape[1]:
-				fake_hand_data = replace_array_by_cuts(fake_hand_data, fake_hand_loader, fake_fixed_data.shape[1])
-			else:
-				fake_fixed_data = replace_array_by_cuts(fake_fixed_data, fake_fixed_loader, fake_hand_data.shape[1])
+		min_fixed = min([len(fake_fixed_data[i]) for i in range(len(fake_fixed_data))])
+		min_hand = min([len(fake_hand_data[i]) for i in range(len(fake_hand_data))])
+		min_real = min([len(real[i]) for i in range(len(real))])
+
+		cut_size = min(min_fixed, min_hand, min_real)
+
+		fake_hand_data = replace_array_by_cuts(np.array(fake_hand_data), fake_hand_loader, cut_size)
+		fake_fixed_data = replace_array_by_cuts(np.array(fake_fixed_data), fake_fixed_loader, cut_size)
+		real = replace_array_by_cuts(np.array(real), real_loader, cut_size)
 
 		fake = np.append(fake_hand_data, fake_fixed_data, axis = 0)
-
-		real_loader = DataLoader(folder = folder + "/real", time = time)
-		real = real_loader.load_data()
-		if fake.shape[1:] != real.shape[1:]:
-			if fake.shape[1] < real.shape[1]:
-				real = replace_array_by_cuts(real, real_loader, fake.shape[1])
-			else:
-				fake = replace_array_by_cuts(fake, real_loader, real.shape[1])
 
 		labels = np.append(np.zeros(fake.shape[0]), np.ones(real.shape[0]))
 		return self.custom_shuffle(np.append(fake, real, axis = 0), to_categorical(labels, 2))
 
-
-from keras.layers import Conv1D, BatchNormalization, Activation, Input, Add, GlobalMaxPooling1D, Dense
+from keras.layers import Input, Conv1D, MaxPooling1D, BatchNormalization, Activation, Flatten, Dense, Dropout
 from keras.utils import to_categorical
-from keras.models import Model
+from keras.models import Model, Sequential
 
 from keras.optimizers import Adam
-
 #Construir as métricas!
-def build_cnn_model(input_shape):
-	def resnet_block(input_layer, filters, name = "resnet_block_0", apply_activation = False):
-		branch = input_layer
-
-		branch = Conv1D(filters, kernel_size = 3, strides = 1, padding = 'same', use_bias = False, name = "{0}_Conv1D_1".format(name))(branch)
-		branch = BatchNormalization(name = "{0}_BN_1".format(name))(branch)
-		branch = Activation('relu', name = "{0}_ReLU_1".format(name))(branch)
-
-		branch = Conv1D(filters, kernel_size = 3, strides = 1, padding = 'same', use_bias = False, name = "{0}_Conv1D_2".format(name))(branch)
-
-		if apply_activation or (branch.shape[-1] != input_layer.shape[-1]):
-			input_layer = Conv1D(filters, kernel_size = 3, strides = 1, padding = 'same', name = "{0}_Conv1D_Residual".format(name))(input_layer)
-
-		branch = Add()([branch, input_layer])
-		branch = BatchNormalization(name = "{0}_BN_F".format(name))(branch)
-		branch = Activation('relu', name = "{0}_ReLU_F".format(name))(branch)
-
-		return branch
-
+def build_cnn_model(input_shape, learning_rate = 2e-3):
 	import keras.backend as K
+
 	def FPR(y_true, y_pred):
 		y_true = K.argmax(y_true)
 		y_pred = K.argmax(y_pred)
@@ -195,35 +169,41 @@ def build_cnn_model(input_shape):
 		y_true = K.argmax(y_true)
 		y_pred = K.argmax(y_pred)
 		return K.mean(K.all([1 - y_pred, y_true], axis = 0))
-	
-	filters = [16, 32, 64, 128]
-	
-	resnet_input = Input(shape = input_shape)
-	resnet = resnet_block(resnet_input, filters = 8, name = "resnet_block_0", apply_activation = True)
-	for i in range(len(filters)):
-		resnet = resnet_block(resnet, filters = filters[i], name = "resnet_block_{0}".format(i + 1), apply_activation = True)
 
-	resnet = GlobalMaxPooling1D()(resnet)
-	resnet = Dense(2, activation = 'softmax')(resnet)
+	model = Sequential()
 
-	model = Model(inputs = resnet_input, outputs = resnet)
+	units = [32, 64, 128, 256]
+	with_input_shape = False
+	for u in units:
+		if not with_input_shape:
+			model.add(Conv1D(filters = u, kernel_size = 7, use_bias = False, padding = 'same', input_shape = input_shape))
+		else:
+			model.add(Conv1D(filters = u, kernel_size = 7, use_bias = False, padding = 'same'))
+
+		model.add(BatchNormalization())
+		model.add(MaxPooling1D(pool_size = 5, strides = 2))
+		model.add(Activation("relu"))
+
+	model.add(Flatten())
+
+	model.add(Dense(2, use_bias = False))
+	model.add(BatchNormalization())
+	model.add(Activation('softmax'))
+
 	model.compile(
-		optimizer = Adam(lr = 1e-6),
+		optimizer = Adam(lr = learning_rate),
 		loss = "binary_crossentropy",
-		metrics = ["accuracy", FNR, FPR]
+		metrics = ["accuracy", FPR, FNR]
 	)
 
-	model.summary()
 	return model
 
 import argparse
 
 def build_parser():
 	parser = argparse.ArgumentParser(description = "Código para treino das redes neurais utilizadas para detecção de ataques de apresentação.")
-	parser.add_argument("dataset_folder", nargs = None, default = None, action = "store",
-						help = "Localização da pasta do dataset. (Padrão: %(default)s)")
-	parser.add_argument("process_folder", nargs = None, default = None, action = "store",
-						help = "Localização da pasta onde serão (ou foram) armazenados os dados processados. (Padrão: %(default)s)")
+	parser.add_argument("data_folder", nargs = None, default = None, action = "store",
+						help = "Localização da pasta do dataset (ou dos arquivos pré-processados). (Padrão: %(default)s)")
 	parser.add_argument("--time", dest = "time", nargs = "?", default = 5, action = "store", type = int,
 						help = "Tempo (em segundos) de captura ou análise. (Padrão: %(default)s segundos)")
 	parser.add_argument("--process", dest = "process_data", action = "store_true", default = False,
@@ -247,25 +227,21 @@ def add_algorithm_info(data, frame_rate):
 	
 	return data_after_processing
 	
-from keras.utils import Sequence	
+from keras.utils import Sequence
 class DataGenerator(Sequence):
-	def __init__(self, train_x, train_y, batch_size = 32):
+	def __init__(self, train_x, train_y, batch_size = 32, noise_weight = 0.001):
 		self.batch_size = batch_size
 
 		self.fake_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 0])
 		self.real_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 1])
+
 		self.real_indexes = np.arange(len(self.real_x))
 		self.fake_indexes = np.arange(len(self.fake_x))
-
-		for i in range(len(self.real_x)):
-			self.real_x[i] = self.real_x[i] / np.mean(self.real_x[i])
-
-		for i in range(len(self.fake_x)):
-			self.fake_x[i] = self.fake_x[i] / np.mean(self.fake_x[i])
+		self.real_pos, self.fake_pos = 0, 0
+		self.noise_weight = noise_weight
 
 	def on_epoch_end(self):
-		self.real_indexes = np.arange(len(self.real_x))
-		self.fake_indexes = np.arange(len(self.fake_x))
+		pass
 
 	# https://stackoverflow.com/questions/4601373/better-way-to-shuffle-two-numpy-arrays-in-unison
 	def shuffle(self, a, b):
@@ -277,11 +253,24 @@ class DataGenerator(Sequence):
 		return min(len(self.fake_x), len(self.real_x)) // self.batch_size
 
 	def __getitem__(self, index):
-		real_indexes = self.real_indexes[index : index + (self.batch_size // 2)]
-		fake_indexes = self.fake_indexes[index : index + (self.batch_size // 2)]
+		if self.real_pos + (self.batch_size // 2) > len(self.real_x):
+			self.real_indexes = np.arange(len(self.real_x))
+			self.real_pos = 0
+
+		if self.fake_pos + (self.batch_size // 2) > len(self.fake_x):
+			self.fake_indexes = np.arange(len(self.fake_x))
+			self.fake_pos = 0
+
+		real_indexes = self.real_indexes[self.real_pos : self.real_pos + (self.batch_size // 2)]
+		fake_indexes = self.fake_indexes[self.fake_pos : self.fake_pos + (self.batch_size // 2)]
+		self.real_pos += self.batch_size // 2
+		self.fake_pos += self.batch_size // 2
 		
 		x = np.append(np.take(self.fake_x, fake_indexes, axis = 0), np.take(self.real_x, real_indexes, axis = 0), axis = 0)
 		y = np.append(np.zeros(self.batch_size // 2), np.ones(self.batch_size // 2))
+
+		# for i in range(self.batch_size):
+		# 	x[i] = x[i] + np.random.normal(size = x[i].shape) * self.noise_weight
 
 		return self.shuffle(x, to_categorical(y, 2))
 
@@ -294,28 +283,42 @@ if __name__ == "__main__":
 	args = build_parser().parse_args()
 	if args.process_data is True:
 		loader = ReplayAttackLoader()
-		t_x, t_y = loader.load_data(folder = "{0}/train".format(args.dataset_folder), time = args.time)
-		v_x, v_y = loader.load_data(folder = "{0}/devel".format(args.dataset_folder), time = args.time)
+		t_x, t_y = loader.load_data(folder = "{0}/train".format(args.data_folder), time = args.time)
+		v_x, v_y = loader.load_data(folder = "{0}/devel".format(args.data_folder), time = args.time)
 
-		np.save("{0}/train_x.npy".format(args.process_folder), t_x)
-		np.save("{0}/train_y.npy".format(args.process_folder), t_y)
+		np.save("{0}/train_x.npy".format(args.data_folder), t_x)
+		np.save("{0}/train_y.npy".format(args.data_folder), t_y)
 
-		np.save("{0}/validation_x.npy".format(args.process_folder), v_x)
-		np.save("{0}/validation_y.npy".format(args.process_folder), v_y)
+		np.save("{0}/validation_x.npy".format(args.data_folder), v_x)
+		np.save("{0}/validation_y.npy".format(args.data_folder), v_y)
 	else:
-		t_x = np.load("{0}/train_x.npy".format(args.process_folder))
-		t_y = np.load("{0}/train_y.npy".format(args.process_folder))
-		v_x = np.load("{0}/validation_x.npy".format(args.process_folder))
-		v_y = np.load("{0}/validation_y.npy".format(args.process_folder))
+		t_x = np.load("{0}/train_x.npy".format(args.data_folder))
+		t_y = np.load("{0}/train_y.npy".format(args.data_folder))
+		v_x = np.load("{0}/validation_x.npy".format(args.data_folder))
+		v_y = np.load("{0}/validation_y.npy".format(args.data_folder))
 
-	# print("Total de exemplos positivos nos dados de treino: {0}".format(np.sum(np.argmax(t_y, axis = 1))))
-	# print("Tamanho dos dados de treino: {0}".format(len(t_y)))
+	print("Total de exemplos positivos nos dados de treino: {0}".format(np.sum(np.argmax(t_y, axis = 1))))
+	print("Tamanho dos dados de treino: {0}".format(len(t_y)))
 
 	print("Train shape: {0}".format(t_x.shape))
 	print("Validation shape: {0}".format(v_x.shape))
 
-	model = build_cnn_model(input_shape = t_x[0].shape)
+	t_x = t_x / 255.0
+	v_x = v_x / 255.0
 
-	validation_generator = DataGenerator(v_x, v_y, batch_size = 8)
-	train_generator = DataGenerator(t_x, t_y, batch_size = 8)
-	model.fit_generator(epochs = 100, generator = train_generator, validation_data = validation_generator)
+	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
+	from itertools import product
+
+	lr = [1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
+	batch_size = [4, 8, 16, 32]
+	for learning_rate, batch_size in product(lr, batch_size):
+		model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = learning_rate)
+		
+		model_name = "lr={0}_batch_size={1}".format(learning_rate, batch_size)
+		
+		tensorboard = TensorBoard(log_dir = './logs/{0}/'.format(model_name))
+		model_checkpoint = ModelCheckpoint("./models/{0}".format(model_name) + "_{epoch:02d}-{val_acc:.2f}.hdf5", monitor = "val_loss", save_best_only = True)
+		early_stopping = EarlyStopping(monitor = "val_loss", patience = 50, verbose = 0)
+
+		train_generator = DataGenerator(t_x, t_y, batch_size = batch_size)
+		results = model.fit_generator(epochs = 5000, generator = train_generator, validation_data = (v_x, v_y), callbacks = [model_checkpoint, early_stopping, tensorboard])
