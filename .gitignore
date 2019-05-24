@@ -2,4 +2,8 @@
 *.avi
 *.dat
 /env/
+/p_data/
+/models/
 /videos/
+/best_models/
+/logs/
