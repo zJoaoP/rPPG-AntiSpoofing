@@ -18,30 +18,23 @@ class Green(DefaultStrategy):
 		self.green_means = green_mean if self.green_means is None else np.append(self.green_means, green_mean)
 
 	def measure_reference(self, frame_rate = 30, window_size = 45):
+		def get_order(size):
+			return (size - 6) // 3
+
 		signal = self.green_means - np.mean(self.green_means)
+		signal = self.detrend(signal)
+		signal = self.moving_average(signal, 30)
+		signal = self.bandpass_filter(signal, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = get_order(len(signal)))
 		return signal
 
 	def show_results(self, frame_rate = 30, window_size = 60, plot = True):
 		signal = self.measure_reference()
+		x, y = self.get_fft(signal, frame_rate = frame_rate)
 
-		detrended_signal = self.detrend(signal)
-		average_signal = self.moving_average(detrended_signal, 15)
-		bandpass_signal = self.bandpass_filter(average_signal, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = 64)
-		x, y = self.get_fft(bandpass_signal, frame_rate = frame_rate)
+		plt.subplot(2, 1, 1)
+		plt.plot(signal, 'g')
 
-		plt.subplot(5, 1, 1)
-		plt.plot(self.green_means, 'g')
-
-		plt.subplot(5, 1, 2)
-		plt.plot(detrended_signal, 'g')
-
-		plt.subplot(5, 1, 3)
-		plt.plot(average_signal, 'y')
-
-		plt.subplot(5, 1, 4)
-		plt.plot(bandpass_signal)
-
-		plt.subplot(5, 1, 5)
+		plt.subplot(2, 1, 2)
 		plt.plot(x, y)
 
 		plt.show()
