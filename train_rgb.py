@@ -6,27 +6,11 @@ import numpy as np
 import cv2
 import os
 
-from keras.layers import Input, Conv1D, MaxPooling1D, Flatten, Dense, Add, AveragePooling1D, Activation
+from keras.layers import Input, Conv1D, MaxPooling1D, Flatten, Dense, Add, GlobalAveragePooling1D, Activation
 from keras.utils import to_categorical
 from keras.models import Model, Sequential
 
 from keras.optimizers import Adam
-
-def binary_focal_loss(gamma = 2., alpha = .25):
-	import keras.backend as K
-	import tensorflow as tf
-	def binary_focal_loss_fixed(y_true, y_pred):
-		pt_1 = tf.where(tf.equal(y_true, 1), y_pred, tf.ones_like(y_pred))
-		pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
-
-		epsilon = K.epsilon()
-		pt_1 = K.clip(pt_1, epsilon, 1. - epsilon)
-		pt_0 = K.clip(pt_0, epsilon, 1. - epsilon)
-
-		return 	-K.sum(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1)) \
-				-K.sum((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0))
-
-	return binary_focal_loss_fixed
 
 def build_cnn_model(input_shape, learning_rate = 2e-3):
 	import keras.backend as K
@@ -91,15 +75,14 @@ def build_cnn_model(input_shape, learning_rate = 2e-3):
 	resnet = residual_block(resnet, filters = 512, kernel_size = 3, name = "residual15")
 	resnet = residual_block(resnet, filters = 512, kernel_size = 3, name = "residual16")
 
-	resnet = AveragePooling1D(pool_size = 2)(resnet)
+	resnet = GlobalAveragePooling1D()(resnet)
 
-	resnet = Flatten()(resnet)
 	resnet = Dense(2, activation = 'softmax')(resnet)
 
 	model = Model(input_layer, resnet)
 	model.compile(
 		optimizer = Adam(lr = learning_rate),
-		loss = binary_focal_loss(),
+		loss = "binary_crossentropy",
 		metrics = ["accuracy", FPR, FNR]
 	)
 	model.summary()
@@ -142,6 +125,9 @@ class DataGenerator(Sequence):
 
 		self.fake_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 0])
 		self.real_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 1])
+
+		self.fake_x = np.append(self.fake_x, np.flip(self.fake_x, axis = 0), axis = 0)
+		self.real_x = np.append(self.real_x, np.flip(self.real_x, axis = 0), axis = 0)
 
 		self.real_indexes = np.arange(len(self.real_x))
 		self.fake_indexes = np.arange(len(self.fake_x))
@@ -218,16 +204,16 @@ if __name__ == "__main__":
 	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
 	from itertools import product
 	
-	lr = [1e-4, 3e-4, 1e-5]
+	lr = [1e-5, 2e-5, 3e-5]
 	bs = [4, 8, 16]
 
 	for batch_size, learning_rate in product(bs, lr):
 		model_name = "resnet_fl_green_rgb_ppg_lr={0}_bs={1}".format(learning_rate, batch_size)
 		train_generator = DataGenerator(t_x, t_y, batch_size = batch_size)
 		
-		model_checkpoint = ModelCheckpoint("./models/{0}".format(model_name) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.2f}.hdf5", monitor = "val_loss", save_best_only = True, verbose = 1)
+		model_checkpoint = ModelCheckpoint("./models/{0}".format(model_name) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_loss", save_best_only = True, verbose = 1)
 		tensorboard = TensorBoard(log_dir = './logs/resnet_fl_green_rgb_ppg/{0}/'.format(model_name))
-		early_stopping = EarlyStopping(monitor = "val_loss", patience = 100, verbose = 1)
+		early_stopping = EarlyStopping(monitor = "val_loss", patience = 30, verbose = 1)
 		
 		model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = learning_rate)
 		
