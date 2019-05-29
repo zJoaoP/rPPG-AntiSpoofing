@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 import os
 
-from keras.layers import Input, Conv1D, MaxPooling1D, Flatten, Dense, Add, GlobalAveragePooling1D, Activation
+from keras.layers import Input, Conv1D, MaxPooling1D, Flatten, Dense, Add, GlobalAveragePooling1D, Activation, Reshape
 from keras.utils import to_categorical
 from keras.models import Model, Sequential
 
@@ -51,35 +51,11 @@ def build_cnn_model(input_shape, learning_rate = 2e-3):
 		y = Activation("relu")(y)
 		return y
 
-	input_layer = Input(shape = input_shape)
-	resnet = Conv1D(64, kernel_size = 7, activation = "relu", padding = 'same')(input_layer)
-	resnet = MaxPooling1D(pool_size = 3, stride = 2)(resnet)
+	model = Sequential()
+	model.add(Reshape(target_shape = (230 * 3,), input_shape = (230, 3)))
+	model.add(Dense(256, activation = "relu"))
+	model.add(Dense(2, activation = "softmax"))
 
-	resnet = residual_block(resnet, filters = 64, kernel_size = 3, name = "residual1")
-	resnet = residual_block(resnet, filters = 64, kernel_size = 3, name = "residual2")
-	resnet = residual_block(resnet, filters = 64, kernel_size = 3, name = "residual3")
-
-	resnet = pooling_residual_block(resnet, filters = 128, kernel_size = 3, name = "residual4")
-	resnet = residual_block(resnet, filters = 128, kernel_size = 3, name = "residual5")
-	resnet = residual_block(resnet, filters = 128, kernel_size = 3, name = "residual6")
-	resnet = residual_block(resnet, filters = 128, kernel_size = 3, name = "residual7")
-
-	resnet = pooling_residual_block(resnet, filters = 256, kernel_size = 3, name = "residual8")
-	resnet = residual_block(resnet, filters = 256, kernel_size = 3, name = "residual9")
-	resnet = residual_block(resnet, filters = 256, kernel_size = 3, name = "residual10")
-	resnet = residual_block(resnet, filters = 256, kernel_size = 3, name = "residual11")
-	resnet = residual_block(resnet, filters = 256, kernel_size = 3, name = "residual12")
-	resnet = residual_block(resnet, filters = 256, kernel_size = 3, name = "residual13")
-
-	resnet = pooling_residual_block(resnet, filters = 512, kernel_size = 3, name = "residual14")
-	resnet = residual_block(resnet, filters = 512, kernel_size = 3, name = "residual15")
-	resnet = residual_block(resnet, filters = 512, kernel_size = 3, name = "residual16")
-
-	resnet = GlobalAveragePooling1D()(resnet)
-
-	resnet = Dense(2, activation = 'softmax')(resnet)
-
-	model = Model(input_layer, resnet)
 	model.compile(
 		optimizer = Adam(lr = learning_rate),
 		loss = "binary_crossentropy",
@@ -192,8 +168,8 @@ if __name__ == "__main__":
 		v_x = np.load("{0}/validation_x.npy".format(args.data_folder))
 		v_y = np.load("{0}/validation_y.npy".format(args.data_folder))
 
-		t_x = np.load("{0}/algo_train_x.npy".format(args.data_folder))
-		v_x = np.load("{0}/algo_validation_x.npy".format(args.data_folder))
+		# t_x = np.load("{0}/algo_train_x.npy".format(args.data_folder))
+		# v_x = np.load("{0}/algo_validation_x.npy".format(args.data_folder))
 
 	print("Total de exemplos positivos nos dados de treino: {0}".format(np.sum(np.argmax(t_y, axis = 1))))
 	print("Tamanho dos dados de treino: {0}".format(len(t_y)))
@@ -204,16 +180,19 @@ if __name__ == "__main__":
 	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
 	from itertools import product
 	
-	lr = [1e-5, 2e-5, 3e-5]
-	bs = [4, 8, 16]
+	lr = [1e-3, 2e-4, 1e-5, 2e-5, 3e-5]
+	bs = [4, 8, 16, 32, 64]
+
+	t_x = t_x / 255.0
+	v_x = v_x / 255.0
 
 	for batch_size, learning_rate in product(bs, lr):
-		model_name = "resnet_fl_green_rgb_ppg_lr={0}_bs={1}".format(learning_rate, batch_size)
+		model_name = "dense_rgb_lr={0}_bs={1}".format(learning_rate, batch_size)
 		train_generator = DataGenerator(t_x, t_y, batch_size = batch_size)
 		
 		model_checkpoint = ModelCheckpoint("./models/{0}".format(model_name) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_loss", save_best_only = True, verbose = 1)
-		tensorboard = TensorBoard(log_dir = './logs/resnet_fl_green_rgb_ppg/{0}/'.format(model_name))
-		early_stopping = EarlyStopping(monitor = "val_loss", patience = 30, verbose = 1)
+		tensorboard = TensorBoard(log_dir = './logs/dense_rgb_ppg/{0}/'.format(model_name))
+		early_stopping = EarlyStopping(monitor = "val_loss", patience = 120, verbose = 1)
 		
 		model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = learning_rate)
 		
