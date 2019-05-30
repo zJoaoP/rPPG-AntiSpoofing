@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 import os
 
-from keras.layers import Input, Conv1D, MaxPooling1D, Flatten, Dense, Add, GlobalAveragePooling1D, Activation, Reshape
+from keras.layers import Dense, BatchNormalization, Activation, Reshape, Dropout
 from keras.utils import to_categorical
 from keras.models import Model, Sequential
 
@@ -53,8 +53,15 @@ def build_cnn_model(input_shape, learning_rate = 2e-3):
 
 	model = Sequential()
 	model.add(Reshape(target_shape = (230 * 3,), input_shape = (230, 3)))
-	model.add(Dense(256, activation = "relu"))
-	model.add(Dense(2, activation = "softmax"))
+	
+	model.add(Dense(256, use_bias = False))
+	model.add(BatchNormalization())
+	model.add(Dropout(0.3))
+	model.add(Activation("relu"))
+
+	model.add(Dense(2, use_bias = False))
+	model.add(BatchNormalization())
+	model.add(Activation("softmax"))
 
 	model.compile(
 		optimizer = Adam(lr = learning_rate),
@@ -180,7 +187,7 @@ if __name__ == "__main__":
 	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
 	from itertools import product
 	
-	lr = [1e-3, 2e-4, 1e-5, 2e-5, 3e-5]
+	lr = [1e-4, 3e-4, 1e-5, 3e-5]
 	bs = [4, 8, 16, 32, 64]
 
 	t_x = t_x / 255.0
@@ -192,7 +199,7 @@ if __name__ == "__main__":
 		
 		model_checkpoint = ModelCheckpoint("./models/{0}".format(model_name) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_loss", save_best_only = True, verbose = 1)
 		tensorboard = TensorBoard(log_dir = './logs/dense_rgb_ppg/{0}/'.format(model_name))
-		early_stopping = EarlyStopping(monitor = "val_loss", patience = 120, verbose = 1)
+		early_stopping = EarlyStopping(monitor = "val_loss", patience = 300, verbose = 1)
 		
 		model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = learning_rate)
 		
