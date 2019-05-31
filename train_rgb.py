@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 import os
 
-from keras.layers import Dense, BatchNormalization, Activation, Reshape, Dropout
+from keras.layers import Dense, BatchNormalization, Activation, Flatten, Dropout, Conv1D, Reshape, GlobalAveragePooling1D
 from keras.utils import to_categorical
 from keras.models import Model, Sequential
 
@@ -25,44 +25,23 @@ def build_cnn_model(input_shape, learning_rate = 2e-3):
 		y_pred = K.argmax(y_pred)
 		return K.mean(K.all([1 - y_pred, y_true], axis = 0))
 
-	def residual_block(input_layer, filters, kernel_size, name = "residual_without_name"):
-		y = input_layer
-
-		y = Conv1D(filters, kernel_size = kernel_size, padding = 'same', name = "{0}_Conv1D_1".format(name))(input_layer)
-		y = Activation("relu")(y)
-		y = Conv1D(filters, kernel_size = kernel_size, padding = 'same', name = "{0}_Conv1D_2".format(name))(y)
-
-		y = Add()([y, input_layer])
-		y = Activation("relu")(y)
-		return y
-
-	def pooling_residual_block(input_layer, filters, kernel_size, name = "residual_without_name"):
-		y = input_layer
-
-		y = Conv1D(filters, kernel_size = kernel_size, strides = 2, padding = 'same', name = "{0}_Conv1D_1".format(name))(input_layer)
-		y = Activation("relu")(y)
-
-		y = Conv1D(filters, kernel_size = kernel_size, padding = 'same', name = "{0}_Conv1D_2".format(name))(y)
-
-		input_layer = Conv1D(filters, kernel_size = kernel_size, strides = 2, padding = 'same', name = "{0}_Residual".format(name))(input_layer)
-
-		y = Add()([y, input_layer])
-
-		y = Activation("relu")(y)
-		return y
-
 	model = Sequential()
-	model.add(Reshape(target_shape = (230 * 3,), input_shape = (230, 3)))
-	
-	model.add(Dense(256, use_bias = False))
+	model.add(Conv1D(128, kernel_size = 8, strides = 1, use_bias = False, input_shape = input_shape))
 	model.add(BatchNormalization())
-	model.add(Dropout(0.3))
 	model.add(Activation("relu"))
 
-	model.add(Dense(2, use_bias = False))
+	model.add(Conv1D(256, kernel_size = 5, strides = 1, use_bias = False))
 	model.add(BatchNormalization())
-	model.add(Activation("softmax"))
+	model.add(Activation("relu"))
 
+	model.add(Conv1D(128, kernel_size = 3, strides = 1, use_bias = False))
+	model.add(BatchNormalization())
+	model.add(Activation("relu"))
+
+	model.add(GlobalAveragePooling1D())
+
+	model.add(Dense(2, activation = "softmax"))
+	
 	model.compile(
 		optimizer = Adam(lr = learning_rate),
 		loss = "binary_crossentropy",
@@ -103,14 +82,11 @@ def add_algorithm_info(data, frame_rate):
 	
 from keras.utils import Sequence
 class DataGenerator(Sequence):
-	def __init__(self, train_x, train_y, batch_size = 32, noise_weight = 0.001):
+	def __init__(self, train_x, train_y, batch_size = 32, noise_weight = 1e-4):
 		self.batch_size = batch_size
 
 		self.fake_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 0])
 		self.real_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 1])
-
-		self.fake_x = np.append(self.fake_x, np.flip(self.fake_x, axis = 0), axis = 0)
-		self.real_x = np.append(self.real_x, np.flip(self.real_x, axis = 0), axis = 0)
 
 		self.real_indexes = np.arange(len(self.real_x))
 		self.fake_indexes = np.arange(len(self.fake_x))
@@ -122,6 +98,22 @@ class DataGenerator(Sequence):
 		assert len(a) == len(b)
 		p = np.random.permutation(len(a))
 		return a[p], b[p]
+
+	def data_augmentation(self, batch):
+		for i in range(len(batch)):
+			flip_prob, scale_prob, offset_prob, noise_prob = np.random.random_sample(size = 4)
+			if flip_prob > 0.5:
+				batch[i] = np.flip(batch[i], axis = 0)
+			if noise_prob > 0.5:
+				batch[i] = batch[i] + self.noise_weight * np.random.standard_normal(size = batch[i].shape)
+			if offset_prob > 0.5:
+				random_offset = np.random.random_sample() / 30.0
+				random_offset = random_offset if np.random.random_sample() < 0.5 else -random_offset
+				batch[i] = batch[i] + random_offset
+			if scale_prob > 0.5:
+				batch[i] = batch[i] * (0.75 + np.random.random_sample())
+
+		return batch
 
 	def __len__(self):
 		return min(len(self.fake_x), len(self.real_x)) // self.batch_size
@@ -137,12 +129,14 @@ class DataGenerator(Sequence):
 
 		real_indexes = self.real_indexes[self.real_pos : self.real_pos + (self.batch_size // 2)]
 		fake_indexes = self.fake_indexes[self.fake_pos : self.fake_pos + (self.batch_size // 2)]
+		
 		self.real_pos += self.batch_size // 2
 		self.fake_pos += self.batch_size // 2
 		
 		x = np.append(np.take(self.fake_x, fake_indexes, axis = 0), np.take(self.real_x, real_indexes, axis = 0), axis = 0)
 		y = np.append(np.zeros(self.batch_size // 2), np.ones(self.batch_size // 2))
 
+		x = self.data_augmentation(x)
 		return self.shuffle(x, to_categorical(y, 2))
 
 if __name__ == "__main__":
@@ -175,8 +169,8 @@ if __name__ == "__main__":
 		v_x = np.load("{0}/validation_x.npy".format(args.data_folder))
 		v_y = np.load("{0}/validation_y.npy".format(args.data_folder))
 
-		# t_x = np.load("{0}/algo_train_x.npy".format(args.data_folder))
-		# v_x = np.load("{0}/algo_validation_x.npy".format(args.data_folder))
+		t_x = np.load("{0}/algo_train_x.npy".format(args.data_folder))
+		v_x = np.load("{0}/algo_validation_x.npy".format(args.data_folder))
 
 	print("Total de exemplos positivos nos dados de treino: {0}".format(np.sum(np.argmax(t_y, axis = 1))))
 	print("Tamanho dos dados de treino: {0}".format(len(t_y)))
@@ -187,25 +181,35 @@ if __name__ == "__main__":
 	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
 	from itertools import product
 	
-	lr = [1e-4, 3e-4, 1e-5, 3e-5]
-	bs = [4, 8, 16, 32, 64]
+	lr = [1e-3, 1e-4, 3e-4, 1e-5, 3e-5, 1e-6]
+	bs = [4, 8, 16, 32]
 
-	t_x = t_x / 255.0
-	v_x = v_x / 255.0
+	# t_x = t_x / 255.0
+	# v_x = v_x / 255.0
 
 	for batch_size, learning_rate in product(bs, lr):
 		model_name = "dense_rgb_lr={0}_bs={1}".format(learning_rate, batch_size)
 		train_generator = DataGenerator(t_x, t_y, batch_size = batch_size)
 		
-		model_checkpoint = ModelCheckpoint("./models/{0}".format(model_name) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_loss", save_best_only = True, verbose = 1)
-		tensorboard = TensorBoard(log_dir = './logs/dense_rgb_ppg/{0}/'.format(model_name))
-		early_stopping = EarlyStopping(monitor = "val_loss", patience = 300, verbose = 1)
+		# model_checkpoint = ModelCheckpoint("./models/{0}".format(model_name) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_loss", save_best_only = True, verbose = 1)
+		# tensorboard = TensorBoard(log_dir = './logs/dense_rgb_ppg/{0}/'.format(model_name))
+		early_stopping = EarlyStopping(monitor = "val_loss", patience = 5000, verbose = 1, min_delta = 0.001)
 		
 		model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = learning_rate)
 		
 		results = model.fit_generator(
-			epochs = 10000,
+			epochs = 15000,
 			generator = train_generator,
-			validation_data = (v_x, v_y),
-			callbacks = [model_checkpoint, tensorboard, early_stopping]
+			validation_data = (v_x, v_y)
+			# callbacks = [model_checkpoint, tensorboard, early_stopping]
 		)
+	
+	# model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = 1.0)
+	# results = []
+	# for file_name in os.listdir("./models/"):
+	# 	model.load_weights("./models/{0}".format(file_name))
+	# 	results += [[file_name] + model.evaluate(v_x, v_y)]
+
+	# print(model.metrics_names)
+	# for r in sorted(results, key = lambda x : x[1]):
+	# 	print(r)
