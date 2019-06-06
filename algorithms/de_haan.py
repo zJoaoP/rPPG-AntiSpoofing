@@ -30,24 +30,26 @@ class DeHaan(DefaultStrategy):
 		signal = np.zeros(len(self.temporal_means), dtype = np.float32)
 		window_stride = window_size // 2
 
+		for i in range(3):
+			self.temporal_means[:, i] = self.temporal_means[:, i] - np.mean(self.temporal_means[:, i])
+			self.temporal_means[:, i] = self.detrend(self.temporal_means[:, i])
+
 		for j in range(0, len(self.temporal_means) - window_size, window_stride):
 			if j + window_size > len(self.temporal_means):
-				break
+				j = len(self.temporal_means) - window_size
 
-			r = self.temporal_means[j : j + window_size, 0] / np.mean(self.temporal_means[j : j + window_size, 0])
-			g = self.temporal_means[j : j + window_size, 1] / np.mean(self.temporal_means[j : j + window_size, 1])
-			b = self.temporal_means[j : j + window_size, 2] / np.mean(self.temporal_means[j : j + window_size, 2])
+			r, g, b = [self.temporal_means[j : j + window_size, i] for i in range(3)]
 
 			Xs = (3.0 * r) - (2.0 * g)
 			Ys = (1.5 * r) + (1.0 * g) - (1.5 * b)
 
-			Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = get_order(window_size))
-			Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = get_order(window_size))
+			Xf = self.bandpass_filter(Xs, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = get_order(window_size))
+			Yf = self.bandpass_filter(Ys, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = get_order(window_size))
 
 			alpha = np.std(Xf) / np.std(Yf)
 
-			window_signal = Xf - (alpha * Yf)
-			signal[j : j + window_size] += ((window_signal - np.mean(window_signal)) / np.std(window_signal)) * np.hanning(window_size)
+			window_signal = (Xf - (alpha * Yf)) * np.hanning(window_size)
+			signal[j : j + window_size] += window_signal
 
 		return signal
 
