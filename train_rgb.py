@@ -6,11 +6,14 @@ import numpy as np
 import cv2
 import os
 
-from keras.layers import Dense, BatchNormalization, Activation, MaxPooling1D, Dropout, Conv1D, Reshape, GlobalAveragePooling1D
+from keras.layers import Conv1D, Flatten, Dense, Input, Concatenate, GlobalAveragePooling1D, MaxPooling1D, Dropout
+from keras.models import Model
 from keras.utils import to_categorical
-from keras.models import Model, Sequential
 
-def build_conv_model(input_shape, learning_rate = 2e-3):
+# Carregar novamente os dados, usando DeHaan e DeHaanPOS (Ao invés de Green)
+# DeHaan corrigido. Verificar resultados em vídeos falsos.
+
+def build_model(frame_count, learning_rate = 1e-4, base_filter_size = 8):
 	import keras.backend as K
 
 	def FPR(y_true, y_pred):
@@ -23,48 +26,62 @@ def build_conv_model(input_shape, learning_rate = 2e-3):
 		y_pred = K.argmax(y_pred)
 		return K.mean(K.all([1 - y_pred, y_true], axis = 0))
 
-	from keras.regularizers import l1, l2
+	def build_rgb_model(base_filter_size):		
+		network = Conv1D(base_filter_size, kernel_size = 11, strides = 1, activation = "relu", name = "conv_rgb1")(rgb_input)
+		network = Conv1D(base_filter_size, kernel_size = 11, strides = 1, activation = "relu", name = "conv_rgb2")(network)
+		network = MaxPooling1D(pool_size = 5, strides = 3, name = "max_pooling_rgb1")(network)
 
-	model = Sequential()
+		network = Conv1D(2 * base_filter_size, kernel_size = 5, strides = 1, activation = "relu", name = "conv_rgb3")(network)
+		network = Conv1D(2 * base_filter_size, kernel_size = 5, strides = 1, activation = "relu", name = "conv_rgb4")(network)
+
+		network = GlobalAveragePooling1D(name = "gap_rgb")(network)
+
+		return network
+
+	def build_ppg_model(base_filter_size):
+		network = Conv1D(base_filter_size, kernel_size = 11, strides = 1, activation = "relu", name = "conv_ppg1")(ppg_input)
+		network = Conv1D(base_filter_size, kernel_size = 11, strides = 1, activation = "relu", name = "conv_ppg2")(network)
+		network = MaxPooling1D(pool_size = 5, strides = 3, name = "max_pooling_ppg1")(network)
+
+		network = Conv1D(2 * base_filter_size, kernel_size = 5, strides = 1, activation = "relu", name = "conv_ppg3")(network)
+		network = Conv1D(2 * base_filter_size, kernel_size = 5, strides = 1, activation = "relu", name = "conv_ppg4")(network)
+
+		network = GlobalAveragePooling1D(name = "gap_ppg")(network)
+
+		return network
+
+	def build_fft_model(base_filter_size):
+		network = Conv1D(base_filter_size, kernel_size = 5, strides = 2, activation = "relu", name = "conv_fft1")(fft_input)
+		network = Conv1D(base_filter_size, kernel_size = 5, strides = 2, activation = "relu", name = "conv_fft2")(network)
+		network = MaxPooling1D(pool_size = 3, strides = 2, name = "max_pooling_fft1")(network)
+
+		network = Conv1D(2 * base_filter_size, kernel_size = 3, strides = 2, activation = "relu", name = "conv_fft3")(network)
+		network = Conv1D(2 * base_filter_size, kernel_size = 3, strides = 2, activation = "relu", name = "conv_fft4")(network)
+		network = GlobalAveragePooling1D(name = "gap_fft")(network)
+
+		return network
+
+	rgb_input = Input(shape = (frame_count, 3), name = "rgb_input")
+	ppg_input = Input(shape = (frame_count, 2), name = "ppg_input")
+	fft_input = Input(shape = (frame_count // 2, 2), name = "fft_input")
 	
-	# model.add(Conv1D(128, kernel_size = 11, strides = 1, use_bias = False, input_shape = input_shape))
-	# model.add(BatchNormalization())
-	# model.add(Activation("relu"))
+	build_functions = [build_rgb_model, build_ppg_model, build_fft_model]
+	rgb_model, ppg_model, fft_model = [call(base_filter_size) for call in build_functions]
 
-	# model.add(Conv1D(128, kernel_size = 11, strides = 1, use_bias = False))
-	# model.add(BatchNormalization())
-	# model.add(Activation("relu"))
-	
-	# model.add(MaxPooling1D(pool_size = 3, strides = 2))
+	combined = Concatenate(name = "merge_combined")([rgb_model, ppg_model, fft_model])
+	combined = Dropout(rate = 0.5, name = "dropout_combined1")(combined)
 
-	# model.add(Conv1D(256, kernel_size = 11, strides = 1, use_bias = False))
-	# model.add(BatchNormalization())
-	# model.add(Activation("relu"))
+	combined = Dense(2, activation = "softmax", name = "final_layer")(combined)
 
-	# model.add(Conv1D(256, kernel_size = 11, strides = 1, use_bias = False))
-	# model.add(BatchNormalization())
-	# model.add(Activation("relu"))
+	combined = Model(inputs = [rgb_input, ppg_input, fft_input], outputs = combined)
 
-	# model.add(GlobalAveragePooling1D())
-	# model.add(Dropout(0.5))
-
-	from keras.layers import LSTM, Flatten
-
-	model.add(Reshape(target_shape = (23, 10), input_shape = input_shape))
-	model.add(LSTM(128, return_sequences = True))
-	model.add(Flatten())
-	model.add(Dense(2, activation = "softmax"))
-
-	from keras.optimizers import Adam
-	model.compile(
-		optimizer = Adam(lr = learning_rate),
+	combined.compile(
+		optimizer = "adam",
 		loss = "binary_crossentropy",
 		metrics = ["accuracy", FPR, FNR]
 	)
-
-	model.summary()
-
-	return model
+	# combined.summary()
+	return combined
 
 import argparse
 
@@ -78,92 +95,38 @@ def build_parser():
 						help = "Define se serão obtidas novas médias a partir do dataset informado. (Padrão: %(default)s)")
 	return parser
 
-from algorithms.green import Green
+from algorithms.de_haan_pos import DeHaanPOS
+from algorithms.de_haan import DeHaan
 
 def add_algorithm_info(data, frame_rate):
-	data_after_processing = np.empty([data.shape[0], data.shape[1], 5], dtype = np.float32)
-	Upsampling1D = lambda x : np.array([list([e, e]) for e in x]).flatten() # (Upsampling1D)
+	time_series = np.empty([data.shape[0], data.shape[1], 2], dtype = np.float32)
+	ffts = np.empty([data.shape[0], data.shape[1] // 2, 2], dtype = np.float32)
 
 	for i in range(len(data)):
 		if i > 0 and i % 500 == 0:
 			print("[PostProcessing] {0} / {1} temporal series processed.".format(i, len(data)))
 
-		algorithm = Green(green_means = data[i][:, 1])
-		rppg = algorithm.measure_reference(frame_rate = frame_rate, window_size = int(frame_rate * 1.6))
-		_, y = algorithm.get_fft(rppg, frame_rate = frame_rate)
+		pos_algorithm = DeHaanPOS(temporal_means = data[i])
+		dehaan_algorithm = DeHaan(temporal_means = data[i])
 
-		y = Upsampling1D(y)
+		dehaan_ppg = dehaan_algorithm.measure_reference(frame_rate = frame_rate, window_size = int(frame_rate * 1.5)).reshape(data.shape[1], 1)
+		pos_ppg = pos_algorithm.measure_reference(frame_rate = frame_rate, window_size = int(frame_rate * 1.5)).reshape(data.shape[1], 1)
 
-		data[i] = data[i] / 255.0
-		data_with_ppg = np.append(data[i], rppg.reshape(rppg.shape[0], 1), axis = 1)
-		data_after_processing[i] = np.append(data_with_ppg, y.reshape(data[0].shape[0], 1), axis = 1)
-	
-	return data_after_processing
-	
-from keras.utils import Sequence
-class DataGenerator(Sequence):
-	def __init__(self, train_x, train_y, batch_size = 32, noise_weight = 1e-2):
-		self.batch_size = batch_size
+		_, dehaan_fft = dehaan_algorithm.get_fft(dehaan_ppg, frame_rate = frame_rate)
+		_, pos_fft = pos_algorithm.get_fft(pos_ppg, frame_rate = frame_rate)
 
-		self.fake_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 0])
-		self.real_x = np.array([train_x[i] for i in range(len(train_x)) if np.argmax(train_y[i]) == 1])
+		dehaan_fft = dehaan_fft.reshape(data.shape[1] // 2, 1)
+		pos_fft = pos_fft.reshape(data.shape[1] // 2, 1)
 
-		self.real_indexes = np.arange(len(self.real_x))
-		self.fake_indexes = np.arange(len(self.fake_x))
-		self.real_pos, self.fake_pos = 0, 0
-		self.noise_weight = noise_weight
+		time_series[i] = np.append(dehaan_ppg, pos_ppg, axis = 1)
+		ffts[i] = np.append(dehaan_fft, pos_fft, axis = 1)
 
-	# https://stackoverflow.com/questions/4601373/better-way-to-shuffle-two-numpy-arrays-in-unison
-	def shuffle(self, a, b):
-		assert len(a) == len(b)
-		p = np.random.permutation(len(a))
-		return a[p], b[p]
-
-	# def data_augmentation(self, batch):
-	# 	for i in range(len(batch)):
-	# 		flip_prob, scale_prob, offset_prob, noise_prob = np.random.random_sample(size = 4)
-	# 		if flip_prob > 0.5:
-	# 			batch[i] = np.flip(batch[i], axis = 0)
-	# 		if noise_prob > 0.5:				
-	# 			batch[i] = batch[i] + self.noise_weight * np.random.standard_normal(size = batch[i].shape)
-	# 		if offset_prob > 0.5:
-	# 			random_offset = np.random.random_sample() / 10.0
-	# 			random_offset = random_offset if np.random.random_sample() < 0.5 else -random_offset
-	# 			batch[i] = batch[i] + random_offset
-	# 		# if scale_prob > 0.5:
-	# 		# 	batch[i] = batch[i] * (1.0 + np.random.random_sample())
-
-	# 	return batch
-
-	def __len__(self):
-		return min(len(self.fake_x), len(self.real_x)) // self.batch_size
-
-	def __getitem__(self, index):
-		if self.real_pos + (self.batch_size // 2) > len(self.real_x):
-			self.real_indexes = np.arange(len(self.real_x))
-			self.real_pos = 0
-
-		if self.fake_pos + (self.batch_size // 2) > len(self.fake_x):
-			self.fake_indexes = np.arange(len(self.fake_x))
-			self.fake_pos = 0
-
-		real_indexes = self.real_indexes[self.real_pos : self.real_pos + (self.batch_size // 2)]
-		fake_indexes = self.fake_indexes[self.fake_pos : self.fake_pos + (self.batch_size // 2)]
-		
-		self.real_pos += self.batch_size // 2
-		self.fake_pos += self.batch_size // 2
-		
-		x = np.append(np.take(self.fake_x, fake_indexes, axis = 0), np.take(self.real_x, real_indexes, axis = 0), axis = 0)
-		y = np.append(np.zeros(self.batch_size // 2), np.ones(self.batch_size // 2))
-
-		# x = self.data_augmentation(x)
-		return self.shuffle(x, to_categorical(y, 2))
+	data = data / 255.0
+	return [data, time_series, ffts]
 
 if __name__ == "__main__":
 	os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
-
-	t_x, t_y, v_x, v_y = None, None, None, None
-	frame_rate = 25 #Obter frame-rate a partir do dataset. Solução temporária.
+	frame_rate = 25
 	
 	args = build_parser().parse_args()
 	if args.process_data is True:
@@ -177,60 +140,62 @@ if __name__ == "__main__":
 		np.save("{0}/validation_x.npy".format(args.data_folder), v_x)
 		np.save("{0}/validation_y.npy".format(args.data_folder), v_y)
 
-		t_x = add_algorithm_info(t_x, frame_rate)
-		v_x = add_algorithm_info(v_x, frame_rate)
+		t_x = add_algorithm_info(t_x, frame_rate = frame_rate)
+		v_x = add_algorithm_info(v_x, frame_rate = frame_rate)
 
-		np.save("{0}/algo_train_x.npy".format(args.data_folder), t_x)
-		np.save("{0}/algo_validation_x.npy".format(args.data_folder), v_x)
+		names = ["ppg_x", "fft_x"]
+		for i, name in enumerate(names):
+			np.save("{0}/train_{1}.npy".format(args.data_folder, name), t_x[1 + i])
+			np.save("{0}/validation_{1}.npy".format(args.data_folder, name), v_x[1 + i])
 	else:
 		t_x = np.load("{0}/train_x.npy".format(args.data_folder))
 		t_y = np.load("{0}/train_y.npy".format(args.data_folder))
 
-		v_x = np.load("{0}/validation_x.npy".format(args.data_folder))
 		v_y = np.load("{0}/validation_y.npy".format(args.data_folder))
+		v_x = np.load("{0}/validation_x.npy".format(args.data_folder))
 
-		t_x = np.load("{0}/fft_green_train_x.npy".format(args.data_folder))
-		v_x = np.load("{0}/fft_green_validation_x.npy".format(args.data_folder))
+		# ppg_train = np.load("{0}/train_ppg_x.npy".format(args.data_folder))
+		# fft_train = np.load("{0}/train_fft_x.npy".format(args.data_folder))
 
-	print("Total de exemplos positivos nos dados de treino: {0}".format(np.sum(np.argmax(t_y, axis = 1))))
-	print("Tamanho dos dados de treino: {0}".format(len(t_y)))
+		# ppg_validation = np.load("{0}/validation_ppg_x.npy".format(args.data_folder))
+		# fft_validation = np.load("{0}/validation_fft_x.npy".format(args.data_folder))
 
-	print("Train shape: {0}".format(t_x.shape))
-	print("Validation shape: {0}".format(v_x.shape))
+		# t_x = [t_x, ppg_train, fft_train]
+		# v_x = [v_x, ppg_validation, fft_validation]
 
-	# t_x = add_algorithm_info(t_x, frame_rate)
-	# v_x = add_algorithm_info(v_x, frame_rate)
+	t_x = add_algorithm_info(t_x, frame_rate = frame_rate)
+	v_x = add_algorithm_info(v_x, frame_rate = frame_rate)
 
-	# np.save("{0}/fft_green_train_x.npy".format(args.data_folder), t_x)
-	# np.save("{0}/fft_green_validation_x.npy".format(args.data_folder), v_x)
+	names = ["ppg_x", "fft_x"]
+	for i, name in enumerate(names):
+		np.save("{0}/train_{1}.npy".format(args.data_folder, name), t_x[1 + i])
+		np.save("{0}/validation_{1}.npy".format(args.data_folder, name), v_x[1 + i])
 
-	t_x = t_x[:, :, 3].reshape(t_x.shape[0], t_x.shape[1], 1)
-	v_x = v_x[:, :, 3].reshape(v_x.shape[0], v_x.shape[1], 1)
+	# t_x[0] = t_x[0] / np.max(t_x[0])
+	# v_x[0] = v_x[0] / np.max(v_x[0])
 
-	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
+	# from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, EarlyStopping
+	# from itertools import product
 
-	model_name = "lstm_ppg_lr=1e-4_bs=8"
-	train_generator = DataGenerator(t_x, t_y, batch_size = 8)
+	# model_prefix = "concat_model"
+	# lr = [1e-3, 1e-4, 1e-5]
+	# bs = [4, 8, 16, 32]
+	# fs = [8, 16, 32]
+	# for learning_rate, batch_size, base_filter_size in product(lr, bs, fs):
+	# 	model_code = "lr_{0}_bs_{1}_bfs_{2}".format(learning_rate, batch_size, base_filter_size)
+	# 	print("TRAINING {}! :)".format(model_code))
 	
-	model_checkpoint = ModelCheckpoint("./models/{0}".format(model_name) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_loss", save_best_only = True, verbose = 1)
-	tensorboard = TensorBoard(log_dir = './logs/lstm_ppg/{0}/'.format(model_name))
-	# early_stopping = EarlyStopping(monitor = "val_loss", patience = 1500, verbose = 1, min_delta = 0.0001)
-	
-	model = build_conv_model(input_shape = t_x[0].shape, learning_rate = 1e-4)
-	
-	results = model.fit_generator(
-		epochs = 30000,
-		generator = train_generator,
-		validation_data = (v_x, v_y),
-		callbacks = [model_checkpoint, tensorboard]
-	)
+	# 	model_checkpoint = ModelCheckpoint("./models/{0}_{1}".format(model_prefix, model_code) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_acc", save_best_only = True, verbose = 1)
+	# 	early_stopping = EarlyStopping(monitor = "val_acc", patience = 30, verbose = 1)
+	# 	tensorboard = TensorBoard(log_dir = './logs/{0}/{1}/'.format(model_prefix, model_code))
+		
+	# 	model = build_model(frame_count = len(t_x[0][0]), learning_rate = learning_rate, base_filter_size = base_filter_size)
 
-	# model = build_cnn_model(input_shape = t_x[0].shape, learning_rate = 1.0)
-	# results = []
-	# for file_name in os.listdir("./models/"):
-	# 	model.load_weights("./models/{0}".format(file_name))
-	# 	results += [[file_name] + model.evaluate(v_x, v_y)]
-
-	# print(model.metrics_names)
-	# for r in sorted(results, key = lambda x : x[1]):
-	# 	print(r)
+	# 	results = model.fit(
+	# 		x = t_x,
+	# 		y = t_y,
+	# 		batch_size = batch_size,
+	# 		epochs = 30000,
+	# 		validation_data = (v_x, v_y),
+	# 		callbacks = [tensorboard, model_checkpoint, early_stopping]
+	# 	)

@@ -43,7 +43,7 @@ class DefaultStrategy:
 				left += 1
 				right -= 1
 
-		return m_average[window_size // 2 : len(values) - window_size]
+		return m_average
 
 	def get_fft(self, y, frame_rate = 30):
 		sample_rate = 1.0 / float(frame_rate)
