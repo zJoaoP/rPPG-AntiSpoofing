@@ -23,7 +23,7 @@ class MyArgumentParser:
 							help = "Tempo (em segundos) de captura ou análise. (Padrão: %(default)s segundos)")
 		parser.add_argument("--use-kinect", dest = "use_kinect", action = "store_true", default = False,
 							help = "Define se o programa utilizará (ou não) um kinect para obter as imagens. (Padrão: %(default)s)")
-		parser.add_argument("--aproach", dest = "aproach", nargs = "?", default = ["Green"], action = "store",
+		parser.add_argument("--aproach", dest = "aproach", nargs = "?", default = ["Green", "DeHaan", "DeHaanPOS"], action = "store",
 							help = "Abordagem no cálculo do rPPG. (Padrão: %(default)s)")
 		return parser
 
