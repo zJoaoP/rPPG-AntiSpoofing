@@ -30,7 +30,6 @@ class DefaultStrategy:
 		y_stat = np.matmul((I - np.linalg.inv((I + (l ** 2) * (D2.T * D2)).toarray())), y).A[0]
 		return y_stat
 
-
 	def uses_nir(self):
 		return False
 		
