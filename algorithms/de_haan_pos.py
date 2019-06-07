@@ -31,10 +31,6 @@ class DeHaanPOS(DefaultStrategy):
 		signal = np.zeros(len(self.temporal_means), dtype = np.float64)
 		num_frames = len(self.temporal_means)
 
-		def detrend_signal(signal):
-			signal = signal - np.mean(signal)
-			return self.detrend(signal)
-
 		for i in range(3):
 			self.temporal_means[:, i] -= np.mean(self.temporal_means[:, i])
 			self.temporal_means[:, i] = self.detrend(self.temporal_means[:, i])
@@ -48,7 +44,8 @@ class DeHaanPOS(DefaultStrategy):
 				H = S[0] + (np.std(S[0]) / np.std(S[1])) * S[1]
 				signal[m : n] += (H - np.mean(H))
 
-		return self.bandpass_filter(signal, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = get_order(window_size))
+		signal = self.bandpass_filter(signal, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = get_order(len(signal)))
+		return (signal - np.mean(signal)) / np.std(signal)
 
 	def show_results(self, frame_rate = 30, window_size = 60, plot = True):
 		signal = self.measure_reference(frame_rate = frame_rate, window_size = window_size)
@@ -57,17 +54,18 @@ class DeHaanPOS(DefaultStrategy):
 		if plot == True:
 			plt.title("POS")
 			
-			plt.subplot(2, 1, 1)
+			plt.subplot(3, 1, 1)
 			plt.plot(self.temporal_means[:, 0], 'r')
 			plt.plot(self.temporal_means[:, 1], 'g')
 			plt.plot(self.temporal_means[:, 2], 'b')
 
-			plt.subplot(2, 1, 2)
+			plt.subplot(3, 1, 2)
+			plt.plot(signal)
+
+			plt.subplot(3, 1, 3)
 			plt.plot(x, y)
 
 			plt.show()
 
 		print("[DeHaanPOS - Without BPF] {0:2f} bpm.".format(60.0 * x[np.argmax(y)]))
-		print("[DeHaanPOS - With BPF] {0:2f} bpm.".format(60.0 * x_f[np.argmax(y_f)]))
-
 		plt.show()
