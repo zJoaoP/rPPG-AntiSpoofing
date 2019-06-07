@@ -24,8 +24,7 @@ class Green(DefaultStrategy):
 		signal = self.green_means - np.mean(self.green_means)
 		signal = self.detrend(signal)
 		signal = self.moving_average(signal, 30)
-		signal = self.bandpass_filter(signal, frame_rate = frame_rate, min_freq = 0.6, max_freq = 4.0, order = get_order(len(signal)))
-		return signal
+		return self.bandpass_filter(signal, frame_rate = frame_rate, min_freq = 0.7, max_freq = 4.0, order = get_order(len(signal)))
 
 	def show_results(self, frame_rate = 30, window_size = 60, plot = True):
 		signal = self.measure_reference()
