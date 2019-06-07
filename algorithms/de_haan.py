@@ -51,7 +51,7 @@ class DeHaan(DefaultStrategy):
 			window_signal = (Xf - (alpha * Yf)) * np.hanning(window_size)
 			signal[j : j + window_size] += window_signal
 
-		return signal
+		return (signal - np.mean(signal)) / np.std(signal)
 
 	def show_results(self, frame_rate = 30, window_size = 60, plot = True):
 		signal = self.measure_reference(frame_rate = frame_rate, window_size = window_size)
