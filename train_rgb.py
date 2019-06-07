@@ -113,6 +113,7 @@ from algorithms.de_haan_pos import DeHaanPOS
 from algorithms.de_haan import DeHaan
 
 def add_algorithm_info(data, frame_rate):
+	from copy import deepcopy
 	time_series = np.empty([data.shape[0], data.shape[1], 2], dtype = np.float32)
 	ffts = np.empty([data.shape[0], data.shape[1] // 2, 2], dtype = np.float32)
 
@@ -120,14 +121,17 @@ def add_algorithm_info(data, frame_rate):
 		if i > 0 and i % 500 == 0:
 			print("[PostProcessing] {0} / {1} temporal series processed.".format(i, len(data)))
 
-		pos_algorithm = DeHaanPOS(temporal_means = data[i])
-		dehaan_algorithm = DeHaan(temporal_means = data[i])
+		pos_algorithm = DeHaanPOS(temporal_means = deepcopy(data[i]))
+		dehaan_algorithm = DeHaan(temporal_means = deepcopy(data[i]))
 
-		dehaan_ppg = dehaan_algorithm.measure_reference(frame_rate = frame_rate, window_size = int(frame_rate * 1.5)).reshape(data.shape[1], 1)
-		pos_ppg = pos_algorithm.measure_reference(frame_rate = frame_rate, window_size = int(frame_rate * 1.5)).reshape(data.shape[1], 1)
+		dehaan_ppg = dehaan_algorithm.measure_reference(frame_rate = frame_rate, window_size = int(frame_rate * 1.6))
+		pos_ppg = pos_algorithm.measure_reference(frame_rate = frame_rate, window_size = int(frame_rate * 1.6))
 
-		_, dehaan_fft = dehaan_algorithm.get_fft(dehaan_ppg, frame_rate = frame_rate)
-		_, pos_fft = pos_algorithm.get_fft(pos_ppg, frame_rate = frame_rate)
+		x_dehaan, dehaan_fft = dehaan_algorithm.get_fft(dehaan_ppg, frame_rate = frame_rate)		
+		x_pos, pos_fft = pos_algorithm.get_fft(pos_ppg, frame_rate = frame_rate)
+
+		dehaan_ppg = dehaan_ppg.reshape(data.shape[1], 1)
+		pos_ppg = pos_ppg.reshape(data.shape[1], 1)
 
 		dehaan_fft = dehaan_fft.reshape(data.shape[1] // 2, 1)
 		pos_fft = pos_fft.reshape(data.shape[1] // 2, 1)
@@ -135,7 +139,8 @@ def add_algorithm_info(data, frame_rate):
 		time_series[i] = np.append(dehaan_ppg, pos_ppg, axis = 1)
 		ffts[i] = np.append(dehaan_fft, pos_fft, axis = 1)
 
-	data = data / 255.0
+		data[i] = data[i] / np.max(data[i])
+
 	return [data, time_series, ffts]
 
 if __name__ == "__main__":
@@ -168,40 +173,48 @@ if __name__ == "__main__":
 		v_y = np.load("{0}/validation_y.npy".format(args.data_folder))
 		v_x = np.load("{0}/validation_x.npy".format(args.data_folder))
 
-		ppg_train = np.load("{0}/train_ppg_x.npy".format(args.data_folder))
-		fft_train = np.load("{0}/train_fft_x.npy".format(args.data_folder))
+		# ppg_train = np.load("{0}/train_ppg_x.npy".format(args.data_folder))
+		# fft_train = np.load("{0}/train_fft_x.npy".format(args.data_folder))
 
-		ppg_validation = np.load("{0}/validation_ppg_x.npy".format(args.data_folder))
-		fft_validation = np.load("{0}/validation_fft_x.npy".format(args.data_folder))
+		# ppg_validation = np.load("{0}/validation_ppg_x.npy".format(args.data_folder))
+		# fft_validation = np.load("{0}/validation_fft_x.npy".format(args.data_folder))
 
-		t_x = [t_x, ppg_train, fft_train]
-		v_x = [v_x, ppg_validation, fft_validation]
+		# t_x = [t_x, ppg_train, fft_train]
+		# v_x = [v_x, ppg_validation, fft_validation]
 
-	t_x[0] = t_x[0] / np.max(t_x[0])
-	v_x[0] = v_x[0] / np.max(v_x[0])
+	t_x = add_algorithm_info(t_x, frame_rate = frame_rate)
+	v_x = add_algorithm_info(v_x, frame_rate = frame_rate)
 
-	from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, EarlyStopping
-	from itertools import product
+	names = ["ppg_x", "fft_x"]
+	for i, name in enumerate(names):
+		np.save("{0}/train_{1}.npy".format(args.data_folder, name), t_x[1 + i])
+		np.save("{0}/validation_{1}.npy".format(args.data_folder, name), v_x[1 + i])
 
-	model_prefix = "concat_model"
-	lr = [2e-4, 1e-5]
-	bs = [8, 16, 32]
-	fs = [32, 64, 128]
-	for batch_size, base_filter_size, learning_rate in product(bs, fs, lr):
-		model_code = "lr_{0}_bs_{1}_bfs_{2}".format(learning_rate, batch_size, base_filter_size)
-		print("TRAINING {}! :)".format(model_code))
+	# t_x[0] = t_x[0] / np.max(t_x[0])
+	# v_x[0] = v_x[0] / np.max(v_x[0])
+
+	# from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, EarlyStopping
+	# from itertools import product
+
+	# model_prefix = "concat_model"
+	# lr = [2e-4, 1e-5]
+	# bs = [8, 16, 32]
+	# fs = [32, 64, 128]
+	# for batch_size, base_filter_size, learning_rate in product(bs, fs, lr):
+	# 	model_code = "lr_{0}_bs_{1}_bfs_{2}".format(learning_rate, batch_size, base_filter_size)
+	# 	print("TRAINING {}! :)".format(model_code))
 	
-		model_checkpoint = ModelCheckpoint("./models/{0}_{1}".format(model_prefix, model_code) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_acc", save_best_only = True, verbose = 1)
-		early_stopping = EarlyStopping(monitor = "val_acc", patience = 100, verbose = 1)
-		tensorboard = TensorBoard(log_dir = './logs/{0}/{1}/'.format(model_prefix, model_code))
+	# 	model_checkpoint = ModelCheckpoint("./models/{0}_{1}".format(model_prefix, model_code) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_acc", save_best_only = True, verbose = 1)
+	# 	early_stopping = EarlyStopping(monitor = "val_acc", patience = 100, verbose = 1)
+	# 	tensorboard = TensorBoard(log_dir = './logs/{0}/{1}/'.format(model_prefix, model_code))
 		
-		model = build_model(frame_count = len(t_x[0][0]), learning_rate = learning_rate, base_filter_size = base_filter_size)
+	# 	model = build_model(frame_count = len(t_x[0][0]), learning_rate = learning_rate, base_filter_size = base_filter_size)
 
-		results = model.fit(
-			x = t_x,
-			y = t_y,
-			batch_size = batch_size,
-			epochs = 30000,
-			validation_data = (v_x, v_y),
-			callbacks = [tensorboard, model_checkpoint, early_stopping]
-		)
+	# 	results = model.fit(
+	# 		x = t_x,
+	# 		y = t_y,
+	# 		batch_size = batch_size,
+	# 		epochs = 30000,
+	# 		validation_data = (v_x, v_y),
+	# 		callbacks = [tensorboard, model_checkpoint, early_stopping]
+	# 	)
