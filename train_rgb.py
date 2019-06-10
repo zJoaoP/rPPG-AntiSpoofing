@@ -33,12 +33,11 @@ def build_model(frame_count, learning_rate = 1e-4, base_filter_size = 8):
 		network = MaxPooling1D(pool_size = 5, strides = 3, name = "max_pooling_rgb1")(network)
 
 		for i in range(2):
-			network = Conv1D((2 ** (1 + i)) * base_filter_size, kernel_size = 5, strides = 1, use_bias = False, name = "conv_rgb{}".format(i + 2))(network)
+			network = Conv1D((2 ** (1 + i)) * base_filter_size, kernel_size = 7, strides = 1, use_bias = False, name = "conv_rgb{}".format(i + 2))(network)
 			network = BatchNormalization(name = "batch_normalization_rgb{}".format(i + 2))(network)
 			network = Activation("relu", name = "activation_rgb{}".format(i + 2))(network)
 			network = MaxPooling1D(pool_size = 3, strides = 2, name = "max_pooling_rgb{}".format(i + 2))(network)
 
-		# network = Flatten(name = "flatten_rgb")(network)
 		network = GlobalAveragePooling1D(name = "gap_rgb")(network)
 
 		return network
@@ -50,12 +49,11 @@ def build_model(frame_count, learning_rate = 1e-4, base_filter_size = 8):
 		network = MaxPooling1D(pool_size = 5, strides = 3, name = "max_pooling_ppg1")(network)
 
 		for i in range(2):
-			network = Conv1D((2 ** (1 + i)) * base_filter_size, kernel_size = 5, strides = 1, use_bias = False, name = "conv_ppg{}".format(i + 2))(network)
+			network = Conv1D((2 ** (1 + i)) * base_filter_size, kernel_size = 7, strides = 1, use_bias = False, name = "conv_ppg{}".format(i + 2))(network)
 			network = BatchNormalization(name = "batch_normalization_ppg{}".format(i + 2))(network)
 			network = Activation("relu", name = "activation_ppg{}".format(i + 2))(network)
 			network = MaxPooling1D(pool_size = 3, strides = 2, name = "max_pooling_ppg{}".format(i + 2))(network)
 
-		# network = Flatten(name = "flatten_ppg")(network)
 		network = GlobalAveragePooling1D(name = "gap_ppg")(network)
 
 		return network
@@ -72,7 +70,6 @@ def build_model(frame_count, learning_rate = 1e-4, base_filter_size = 8):
 			network = Activation("relu", name = "activation_fft{}".format(i + 2))(network)
 			network = MaxPooling1D(pool_size = 3, strides = 2, name = "max_pooling_fft{}".format(i + 2))(network)
 
-		# network = Flatten(name = "flatten_fft")(network)
 		network = GlobalAveragePooling1D(name = "gap_fft")(network)
 
 		return network
@@ -147,7 +144,7 @@ def add_algorithm_info(data, frame_rate):
 
 from keras.utils import Sequence
 class DataGenerator(Sequence):
-	def __init__(self, train_x, train_y, batch_size = 32, noise_weight = 0.001):
+	def __init__(self, train_x, train_y, batch_size = 32, noise_weight = 0.01):
 		self.batch_size = batch_size
 
 		self.train_x = train_x
@@ -164,6 +161,47 @@ class DataGenerator(Sequence):
 
 	def __len__(self):
 		return min(len(self.fake_positions_x), len(self.real_positions_x)) // self.batch_size
+
+	def data_augmentation(self, x, threshold = 0.3, frame_rate = 25):
+		augmented_data = x
+		for i in range(len(x)):
+			coin, coin_global_noise, coin_color_noise, coin_frame_rate = [np.random.sample() for x in range(4)]
+			if coin > threshold:
+				x_means, x_ppg, x_fft = [x[j][i] for j in range(3)]
+				sample_frame_rate = frame_rate
+				if coin_frame_rate > threshold:
+					sample_frame_rate = int(sample_frame_rate + 5 * np.random.sample())
+					sample_frame_rate = int(sample_frame_rate - 5 * np.random.sample())
+
+				if coin_global_noise > threshold:
+					x_means += self.noise_weight * np.random.normal(size = x_means.shape)
+					x_ppg += self.noise_weight * np.random.normal(size = x_ppg.shape)
+					x_fft += self.noise_weight * np.random.normal(size = x_fft.shape)				
+				elif coin_color_noise > threshold:
+					from copy import deepcopy
+
+					x_means += self.noise_weight * np.random.normal(size = x_means.shape)
+					dehaan_algorithm = DeHaan(temporal_means = deepcopy(x_means))
+					pos_algorithm = DeHaanPOS(temporal_means = deepcopy(x_means))
+
+					x_dehaan_ppg = dehaan_algorithm.measure_reference(frame_rate = sample_frame_rate, window_size = int(sample_frame_rate * 1.6))
+					x_pos_ppg = pos_algorithm.measure_reference(frame_rate = sample_frame_rate, window_size = int(sample_frame_rate * 1.6))
+
+					_, x_dehaan_fft = dehaan_algorithm.get_fft(x_dehaan_ppg, frame_rate = sample_frame_rate)		
+					_, x_pos_fft = pos_algorithm.get_fft(x_pos_ppg, frame_rate = sample_frame_rate)
+
+					x_dehaan_ppg = x_dehaan_ppg.reshape(x_means.shape[0], 1)
+					x_pos_ppg = x_pos_ppg.reshape(x_means.shape[0], 1)
+
+					x_dehaan_fft = x_dehaan_fft.reshape(x_means.shape[0] // 2, 1)
+					x_pos_fft = x_pos_fft.reshape(x_means.shape[0] // 2, 1)
+
+					x_ppg = np.append(x_dehaan_ppg, x_pos_ppg, axis = 1)
+					x_fft = np.append(x_dehaan_fft, x_pos_fft, axis = 1)
+
+				augmented_data[:][i] = [x_means, x_ppg, x_fft]
+		return augmented_data
+
 
 	def __getitem__(self, index):
 		if self.real_pos + (self.batch_size // 2) > len(self.real_positions_x):
@@ -186,7 +224,7 @@ class DataGenerator(Sequence):
 		x = [np.append(np.take(self.train_x[i], fake_indexes, axis = 0), np.take(self.train_x[i], real_indexes, axis = 0), axis = 0) for i in range(3)]
 		y = np.append(np.zeros(self.batch_size // 2), np.ones(self.batch_size // 2))
 
-		return x, to_categorical(y, 2)
+		return self.data_augmentation(x), to_categorical(y, 2)
 
 if __name__ == "__main__":
 	os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
@@ -232,19 +270,18 @@ if __name__ == "__main__":
 	from itertools import product
 
 	model_prefix = "concat_model"
-	lr = [1e-5, 3e-5, 1e-6, 3e-6]
+	lr = [1e-4, 1e-5, 3e-5]
 	bs = [8, 16, 32]
-	fs = [8, 16, 32, 64]
+	fs = [16, 32]
 	for batch_size, base_filter_size, learning_rate in product(bs, fs, lr):
 		model_code = "lr_{0}_bs_{1}_bfs_{2}".format(learning_rate, batch_size, base_filter_size)
 		print("TRAINING {}! :)".format(model_code))
 	
 		model_checkpoint = ModelCheckpoint("./models/{0}_{1}".format(model_prefix, model_code) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_acc", save_best_only = True, verbose = 1)
-		early_stopping = EarlyStopping(monitor = "val_acc", patience = 1500, verbose = 1)
+		early_stopping = EarlyStopping(monitor = "val_acc", patience = 1000, verbose = 1)
 		tensorboard = TensorBoard(log_dir = './logs/{0}/{1}/'.format(model_prefix, model_code))
 
 		model = build_model(frame_count = len(t_x[0][0]), learning_rate = learning_rate, base_filter_size = base_filter_size)
-		plot_model(model, to_file = './images/{}.png'.format(model_code), show_shapes = True)
 
 		train_generator = DataGenerator(t_x, t_y, batch_size = batch_size)
 
