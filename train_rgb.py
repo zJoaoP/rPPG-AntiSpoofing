@@ -30,9 +30,9 @@ def build_model(frame_count, learning_rate = 1e-4, base_filter_size = 8):
 		network = Conv1D(base_filter_size, kernel_size = 11, strides = 1, use_bias = False, name = "conv_rgb1")(rgb_input)
 		network = BatchNormalization(name = "batch_normalization_rgb1")(network)
 		network = Activation("relu", name = "activation_rgb1")(network)
-		network = MaxPooling1D(pool_size = 5, strides = 3, name = "max_pooling_rgb1")(network)
+		network = MaxPooling1D(pool_size = 5, strides = 2, name = "max_pooling_rgb1")(network)
 
-		for i in range(2):
+		for i in range(1):
 			network = Conv1D((2 ** (1 + i)) * base_filter_size, kernel_size = 7, strides = 1, use_bias = False, name = "conv_rgb{}".format(i + 2))(network)
 			network = BatchNormalization(name = "batch_normalization_rgb{}".format(i + 2))(network)
 			network = Activation("relu", name = "activation_rgb{}".format(i + 2))(network)
@@ -46,9 +46,9 @@ def build_model(frame_count, learning_rate = 1e-4, base_filter_size = 8):
 		network = Conv1D(base_filter_size, kernel_size = 11, strides = 1, use_bias = False, name = "conv_ppg1")(ppg_input)
 		network = BatchNormalization(name = "batch_normalization_ppg1")(network)
 		network = Activation("relu", name = "activation_ppg1")(network)
-		network = MaxPooling1D(pool_size = 5, strides = 3, name = "max_pooling_ppg1")(network)
+		network = MaxPooling1D(pool_size = 5, strides = 2, name = "max_pooling_ppg1")(network)
 
-		for i in range(2):
+		for i in range(1):
 			network = Conv1D((2 ** (1 + i)) * base_filter_size, kernel_size = 7, strides = 1, use_bias = False, name = "conv_ppg{}".format(i + 2))(network)
 			network = BatchNormalization(name = "batch_normalization_ppg{}".format(i + 2))(network)
 			network = Activation("relu", name = "activation_ppg{}".format(i + 2))(network)
@@ -64,7 +64,7 @@ def build_model(frame_count, learning_rate = 1e-4, base_filter_size = 8):
 		network = Activation("relu", name = "activation_fft1")(network)
 		network = MaxPooling1D(pool_size = 3, strides = 2, name = "max_pooling_fft1")(network)
 
-		for i in range(2):
+		for i in range(1):
 			network = Conv1D((2 ** (1 + i)) * base_filter_size, kernel_size = 3, strides = 1, use_bias = False, name = "conv_fft{}".format(i + 2))(network)
 			network = BatchNormalization(name = "batch_normalization_fft{}".format(i + 2))(network)
 			network = Activation("relu", name = "activation_fft{}".format(i + 2))(network)
@@ -162,7 +162,7 @@ class DataGenerator(Sequence):
 	def __len__(self):
 		return min(len(self.fake_positions_x), len(self.real_positions_x)) // self.batch_size
 
-	def data_augmentation(self, x, threshold = 0.3, frame_rate = 25):
+	def data_augmentation(self, x, threshold = 0.5, frame_rate = 25):
 		augmented_data = x
 		for i in range(len(x)):
 			coin, coin_global_noise, coin_color_noise, coin_frame_rate = [np.random.sample() for x in range(4)]
@@ -270,15 +270,15 @@ if __name__ == "__main__":
 	from itertools import product
 
 	model_prefix = "concat_model"
-	lr = [1e-4, 1e-5, 3e-5]
-	bs = [8, 16, 32]
-	fs = [16, 32]
+	lr = [1e-4, 1e-5, 1e-6]
+	bs = [4, 8, 16]
+	fs = [8, 16, 32, 64, 128]
 	for batch_size, base_filter_size, learning_rate in product(bs, fs, lr):
 		model_code = "lr_{0}_bs_{1}_bfs_{2}".format(learning_rate, batch_size, base_filter_size)
 		print("TRAINING {}! :)".format(model_code))
 	
 		model_checkpoint = ModelCheckpoint("./models/{0}_{1}".format(model_prefix, model_code) + "_ep={epoch:02d}-loss={val_loss:.5f}-acc={val_acc:.4f}.hdf5", monitor = "val_acc", save_best_only = True, verbose = 1)
-		early_stopping = EarlyStopping(monitor = "val_acc", patience = 1000, verbose = 1)
+		early_stopping = EarlyStopping(monitor = "val_acc", patience = 150, verbose = 1)
 		tensorboard = TensorBoard(log_dir = './logs/{0}/{1}/'.format(model_prefix, model_code))
 
 		model = build_model(frame_count = len(t_x[0][0]), learning_rate = learning_rate, base_filter_size = base_filter_size)
