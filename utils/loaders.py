@@ -1,3 +1,11 @@
+from utils.landmarks import LandmarkPredictor
+from utils.extractor import CheeksAndNose
+from keras.utils import to_categorical
+
+import numpy as np
+import cv2
+import os
+
 class VideoLoader:
 	def __init__(self, time = 10, roi_extractor = CheeksAndNose()):
 		self.roi_extractor = roi_extractor
@@ -22,7 +30,7 @@ class VideoLoader:
 	def load_video(self, filename):
 		if self.is_valid_video(filename):
 			stream = cv2.VideoCapture(filename)
-			face_predictor = LandmarkPredictor()
+			predictor = LandmarkPredictor()
 			frame_rate, current_frame = int(stream.get(cv2.CAP_PROP_FPS)), 0
 			means = []
 
@@ -31,12 +39,16 @@ class VideoLoader:
 				if not success:
 					break
 
-				face_rect = face_predictor.detect_face(image = frame)
+				face_rect = predictor.detect_face(image = frame)
 				if face_rect is not None:
-					face_left, face_right, face_top, face_bottom = face_rect.left(), face_rect.right(), face_rect.top(), face_rect.bottom()
-					cut_face = frame[face_top : face_bottom, face_left : face_right, :]
+					face_bottom = face_rect.bottom()
+					face_right = face_rect.right()
+					face_left = face_rect.left()
+					face_top = face_rect.top()
 
-					landmarks = face_predictor.detect_landmarks(image = cut_face)
+					cut_face = frame[face_top:face_bottom, face_left:face_right, :]
+
+					landmarks = predictor.detect_landmarks(image = cut_face)
 					roi = self.roi_extractor.extract_roi(cut_face, landmarks)
 					
 					if current_frame % 60 == 0 and current_frame > 0:
@@ -53,15 +65,18 @@ class VideoLoader:
 
 					current_frame += 1
 				else:
-					print("[VideoLoader] Skipping '{0}'. Reason: Failure on Acquisition! (It's a folder??)".format(filename))
+					print("[VideoLoader] Skipping '{0}'.\
+							Reason: Failure on Acquisition!\
+							(It's a folder??)".format(filename))
 					return None
 
 			return np.array(means)
 		else:
-			print("[VideoLoader] Skipping '{0}'. Reason: Invalid Video! (It's a folder??)".format(filename))
+			print("[VideoLoader] Skipping '{0}'. \
+					Reason: Invalid Video! (It's a folder??)".format(filename))
 			return None
 
-class DataLoader:
+class FolderLoader:
 	def __init__(self, folder, file_list = None, time = 15, num_channels = 3, roi_extractor = CheeksAndNose()):
 		self.roi_extractor = roi_extractor
 		self.num_channels = num_channels
@@ -75,22 +90,18 @@ class DataLoader:
 	def split_raw_data(self, raw_data, split_size, stride = 1):
 		data, i = None, 0
 		while i + split_size - 1 < len(raw_data):
-			print(type(raw_data))
-			data = np.array([raw_data[i : i + split_size, :]]) if data is None else np.append(data, np.array([raw_data[i : i + split_size, :]]), axis = 0)
+			if data is None:
+				data = np.array([raw_data[i : i + split_size, :]])
+			else:
+				np.append(
+					data,
+					np.array([raw_data[i : i + split_size, :]]),
+					axis = 0
+				)
+
 			i += stride
 
 		return data
-
-	# def post_process(self, data, frame_rate = 25):
-	# 	min_data_size = min([len(data[i]) for i in range(len(data))])
-	# 	min_data_size = min(min_data_size, self.time * frame_rate)
-	# 	final_data = None
-
-	# 	for i in range(len(data)):
-	# 		sub_videos = self.split_raw_data(np.array(data[i]), split_size = min_data_size, stride = 1)
-	# 		final_data = sub_videos if final_data is None else np.append(final_data, sub_videos, axis = 0)
-
-	# 	return final_data
 
 	def load_data(self):
 		counter, data = 0, []
@@ -98,20 +109,59 @@ class DataLoader:
 		for filename in sorted(os.listdir(self.folder)):
 			counter += 1
 			if (self.file_list is None) or ((self.file_list is not None) and (filename in self.file_list)):
-				print("[DataLoader - {0} / {1}] Trying to load video '{2}'.".format(counter, dir_size, filename))
+				print("[FolderLoader - {0} / {1}] Trying to load video '{2}'.".format(counter, dir_size, filename))
 				video_data = self.loader.load_video(filename = self.folder + '/' + filename)
 				if video_data is not None:
 					data += [video_data]
 
 		return data
 
+class SiW_Loader:
+	def __init__(self, data_folder):
+		self.data_folder = data_folder
+
+	def load_data(self, time):
+		def load_complex_folder(complex_folder, time = 20):
+			complex_folder_data = None
+			for folder in os.listdir(complex_folder):
+				data = FolderLoader(folder = "{0}/{1}".format(complex_folder, folder), time = time).load_data()
+				if complex_folder_data is None:
+					complex_folder_data = np.array(data)
+				else:
+					complex_folder_data = np.append(complex_folder_data, np.array(data), axis = 0)
+
+			return complex_folder_data
+
+		train_spoof = load_complex_folder("{0}/Train/live".format(self.data_folder))
+		train_live = load_complex_folder("{0}/Train/live".format(self.data_folder))
+
+		test_spoof = load_complex_folder("{0}/Test/live".format(self.data_folder))
+		test_live = load_complex_folder("{0}/Test/live".format(self.data_folder))
+
+		np.save("{0}/train_spoof.npy".format(self.data_folder), train_spoof)
+		np.save("{0}/train_live.npy".format(self.data_folder), train_live)
+
+		np.save("{0}/test_spoof.npy".format(self.data_folder), test_spoof)
+		np.save("{0}/test_live.npy".format(self.data_folder), test_live)
+
 class ReplayAttackLoader:
+	def __init__(self, data_folder):
+		self.data_folder = data_folder
+
 	def custom_shuffle(self, a, b):
 		assert len(a) == len(b)
 		p = np.random.permutation(len(a))
+		
 		return a[p], b[p]
 
-	def load_data(self, folder, time):
+	def load_data(self, time):
+		validation = self.load_data_by_folder("{0}/devel".format(self.data_folder), time)
+		train = self.load_data_by_folder("{0}/train".format(self.data_folder), time)
+		test = self.load_data_by_folder("{0}/test".format(self.data_folder), time)
+
+		return [train, validation, test]
+
+	def load_data_by_folder(self, folder, time):
 		def replace_array_by_cuts(raw_data_bucket, data_loader, split_size):
 			new_data = None
 			for i in range(len(raw_data_bucket)):
@@ -121,9 +171,9 @@ class ReplayAttackLoader:
 			return new_data
 
 		print("[ReplayAttackLoader] Loading ReplayAttack videos from '{0}/'.".format(folder))
-		fake_fixed_loader = DataLoader(folder = folder + "/attack/fixed", time = time)
-		fake_hand_loader = DataLoader(folder = folder + "/attack/hand", time = time)
-		real_loader = DataLoader(folder = folder + "/real", time = time)
+		fake_fixed_loader = FolderLoader(folder = folder + "/attack/fixed", time = time)
+		fake_hand_loader = FolderLoader(folder = folder + "/attack/hand", time = time)
+		real_loader = FolderLoader(folder = folder + "/real", time = time)
 
 		fake_fixed_data = fake_fixed_loader.load_data()
 		fake_hand_data = fake_hand_loader.load_data()
@@ -140,6 +190,6 @@ class ReplayAttackLoader:
 		real = replace_array_by_cuts(np.array(real), real_loader, cut_size)
 
 		fake = np.append(fake_hand_data, fake_fixed_data, axis = 0)
-
 		labels = np.append(np.zeros(fake.shape[0]), np.ones(real.shape[0]))
-		return self.custom_shuffle(np.append(fake, real, axis = 0), to_categorical(labels, 2))
+		
+		return [np.append(fake, real, axis = 0), to_categorical(labels, 2)]
