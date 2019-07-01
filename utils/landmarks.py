@@ -3,7 +3,7 @@ import dlib
 import cv2
 
 class LandmarkPredictor:
-	def __init__(self, predictor_folder = "./shape_detector/landmark_predictor.dat", detection_window = 120):
+	def __init__(self, predictor_folder = "./shape_detector/shape_predictor_68_face_landmarks.dat", detection_window = 120):
 		self.predictor = dlib.shape_predictor(predictor_folder)
 		self.detector = dlib.get_frontal_face_detector()
 		self.detection_window = detection_window
