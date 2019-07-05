@@ -79,7 +79,7 @@ class AnnotatedVideoLoader:
 			success, frame = loader.read()
 			cv2.waitKey(1) & 0xFF
 
-			if i >= len(annotations) or np.sum(annotations[i]) == 0:
+			if (i >= len(annotations)) or (np.sum(annotations[i]) == 0):
 				features[i] = features[i - 1]
 			else:
 				x, y, w, h = annotations[i]
@@ -177,14 +177,16 @@ class ReplayAttackLoader:
 		devel_attack, devel_real = ReplayAttackLoader.load_devel(source)
 		test_attack, test_real = ReplayAttackLoader.load_test(source)
 
-		np.save("./rad_train_fake.npy", train_attack)
-		np.save("./rad_train_real.npy", train_real)
+		np.save("{0}/rad_train_fake.npy".format(destination), train_attack)
+		np.save("{0}/rad_train_real.npy".format(destination), train_real)
 
-		np.save("./rad_test_fake.npy", test_attack)
-		np.save("./rad_test_real.npy", test_real)
+		np.save("{0}/rad_test_fake.npy".format(destination), test_attack)
+		np.save("{0}/rad_test_real.npy".format(destination), test_real)
 
-		np.save("./rad_devel_fake.npy", devel_attack)
-		np.save("./rad_devel_real.npy", devel_real)
+		np.save("{0}/rad_devel_fake.npy".format(destination), devel_attack)
+		np.save("{0}/rad_devel_real.npy".format(destination), devel_real)
+
+		pass
 
 
 class SpoofInTheWildLoader:
@@ -210,6 +212,20 @@ class SpoofInTheWildLoader:
 	def load_test(source):
 		return SpoofInTheWildLoader.__load_by_split(source, 'Test')
 
+	@staticmethod
+	def load_and_store(source, destination):
+		train_live, train_spoof = SpoofInTheWildLoader.load_train(source)
+		test_live, test_spoof = SpoofInTheWildLoader.load_test(source)
+
+		np.save("{0}/siw_train_live.npy", train_live)
+		np.save("{0}/siw_train_spoof.npy", train_spoof)
+
+		np.save("{0}/siw_test_live.npy", test_live)
+		np.save("{0}/siw_test_spoof.npy", test_spoof)
+
+		pass
+
+
 def get_args():
 	parser = argparse.ArgumentParser(description="Código para extração das \
 										bases de dados de PAD como SiW e \
@@ -225,17 +241,7 @@ if __name__ == "__main__":
 	args = get_args()
 	if args.source.endswith('ReplayAttack'):
 		ReplayAttackLoader.load_and_store(args.source, args.dest)
+	elif args.source.endswith('SiW_release'):
+		SpoofInTheWildLoader.load_and_store(args.source, args.dest)
 	else:
 		print("Base de dados não suportada.")
-	# train_fake, train_real = ReplayAttackLoader.load_train("./videos/ReplayAttack")
-	# devel_fake, devel_real = ReplayAttackLoader.load_train("./videos/ReplayAttack")
-	# test_fake, test_real = ReplayAttackLoader.load_train("./videos/ReplayAttack")
-
-	# np.save("./train_fake.npy", train_fake)
-	# np.save("./train_real.npy", train_real)
-
-	# np.save("./test_fake.npy", test_fake)
-	# np.save("./test_real.npy", test_real)
-	
-	# np.save("./devel_fake.npy", devel_fake)
-	# np.save("./devel_real.npy", devel_real)
