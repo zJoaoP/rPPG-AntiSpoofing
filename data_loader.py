@@ -11,8 +11,12 @@ from utils.extractor import CheeksAndNose
 
 
 class AsyncVideoLoader:
-	def __init__(self, source):
+	def __init__(self, source, width=None, height=None):
 		self.capture = cv2.VideoCapture(source)
+		if (width is not None) and (height is not None):
+			self.capture.set(CV_CAP_PROP_FRAME_WIDTH, width);
+			self.capture.set(CV_CAP_PROP_FRAME_HEIGHT, height);
+
 		self.read_lock = threading.Lock()
 		self.started = False
 
@@ -57,7 +61,7 @@ class AsyncVideoLoader:
 
 class AnnotatedVideoLoader:
 	@staticmethod
-	def load_features(source, annotation):
+	def load_features(source, annotation, width=None, height=None):
 		print("[DataLoader] Extracting features from '{0}'.".format(source))
 
 		def load_annotations(annotation_location):
@@ -72,7 +76,7 @@ class AnnotatedVideoLoader:
 
 			return np.array(annotations)
 
-		loader = AsyncVideoLoader(source=source).start()
+		loader = AsyncVideoLoader(source=source, width=width, height=height).start()
 		landmark_predictor = LandmarkPredictor()
 		extractor = CheeksAndNose()
 
@@ -81,7 +85,7 @@ class AnnotatedVideoLoader:
 
 		for i in range(loader.lenght()):
 			success, frame = loader.read()
-			cv2.waitKey(1) & 0xFF
+			# cv2.waitKey(1) & 0xFF
 
 			if (i >= len(annotations)) or (np.sum(annotations[i]) == 0):
 				features[i] = features[i - 1]
@@ -102,7 +106,8 @@ class AnnotatedVideoLoader:
 
 class GenericDatasetLoader:
 	@staticmethod
-	def walk_and_load_from(root_folder, annotations_folder):
+	def walk_and_load_from(root_folder, annotations_folder,	
+										width=None, height=None):
 		def is_video(filename):
 			return 	filename.endswith(".mp4")\
 					or filename.endswith(".mov")
@@ -129,7 +134,9 @@ class GenericDatasetLoader:
 		for video, annotation in zip(video_locations, annotations):
 			video_data = AnnotatedVideoLoader.load_features(
 							source=video,
-							annotation=annotation)
+							annotation=annotation,
+							width=width,
+							height=height)
 
 			if folder_features is None:
 				folder_features = np.empty([len(video_locations),
@@ -141,6 +148,7 @@ class GenericDatasetLoader:
 					new_video_data = np.zeros(folder_features.shape[1:])
 					new_video_data[:video_data.shape[0]] = video_data
 					video_data = new_video_data.copy()
+
 				elif video_data.shape[0] > folder_features.shape[1]:
 					video_data = video_data[:folder_features.shape[1]]
 
@@ -200,12 +208,16 @@ class SpoofInTheWildLoader:
 	def __load_by_split(source, split):
 		split_live = GenericDatasetLoader.walk_and_load_from(
 			"{0}/{1}/live".format(source, split),
-			"{0}/{1}/live".format(source, split)
+			"{0}/{1}/live".format(source, split),
+			width=1280,
+			height=720
 		)
 
 		split_spoof = GenericDatasetLoader.walk_and_load_from(
 			"{0}/{1}/spoof".format(source, split),
-			"{0}/{1}/spoof".format(source, split)
+			"{0}/{1}/spoof".format(source, split),
+			width=1280,
+			height=720
 		)
 
 		return split_live, split_spoof
