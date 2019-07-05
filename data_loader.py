@@ -63,7 +63,7 @@ class AnnotatedVideoLoader:
 		def load_annotations(annotation_location):
 			with open(annotation_location) as file:
 				annotations = []
-				for line in file:
+				for line in file.readlines():
 					annotation_line = [int(i) for i in line[:-1].split(' ') if i.isdigit()]
 					if len(annotation_line) > 4:
 						annotation_line = annotation_line[-4:]
@@ -76,9 +76,9 @@ class AnnotatedVideoLoader:
 		landmark_predictor = LandmarkPredictor()
 		extractor = CheeksAndNose()
 
+		features = np.empty([loader.lenght(), 3], dtype=np.float32)
 		annotations = load_annotations(annotation)
 
-		features = np.empty([loader.lenght(), 3], dtype=np.float32)
 		for i in range(loader.lenght()):
 			success, frame = loader.read()
 			cv2.waitKey(1) & 0xFF
@@ -135,6 +135,14 @@ class GenericDatasetLoader:
 				folder_features = np.empty([len(video_locations),
 											video_data.shape[0],
 											3], dtype=np.float32)
+
+			else:
+				if video_data.shape[0] < folder_features.shape[1]:
+					new_video_data = np.zeros(folder_features.shape[1:])
+					new_video_data[:video_data.shape[0]] = video_data
+					video_data = new_video_data.copy()
+				elif video_data.shape[0] > folder_features.shape[1]:
+					video_data = video_data[:folder_features.shape[1]]
 
 			folder_features[k] = video_data			
 			k += 1
