@@ -64,7 +64,11 @@ class AnnotatedVideoLoader:
 			with open(annotation_location) as file:
 				annotations = []
 				for line in file:
-					annotations += [[int(i) for i in line.split(' ')[1:]]]
+					annotation_line = [int(i) for i in line[:-1].split(' ') if i.isdigit()]
+					if len(annotation_line) > 4:
+						annotation_line = annotation_line[-4:]
+
+					annotations += [annotation_line]
 
 			return np.array(annotations)
 
@@ -131,12 +135,6 @@ class GenericDatasetLoader:
 				folder_features = np.empty([len(video_locations),
 											video_data.shape[0],
 											3], dtype=np.float32)
-
-			else:
-				if video_data.shape[0] != folder_features.shape[1]:
-					new_video_data = np.zeros(folder_features.shape[1:])
-					new_video_data[:video_data.shape[0]] = video_data
-					video_data = new_video_data.copy()
 
 			folder_features[k] = video_data			
 			k += 1
