@@ -1,5 +1,6 @@
 import numpy as np
 import threading
+import argparse
 import time
 import cv2
 import os
@@ -74,19 +75,17 @@ class AnnotatedVideoLoader:
 		annotations = load_annotations(annotation)
 
 		features = np.empty([loader.lenght(), 3], dtype=np.float32)
-		print(loader.lenght())
 		for i in range(loader.lenght()):
 			success, frame = loader.read()
 			cv2.waitKey(1) & 0xFF
 
-			if np.sum(annotations[i]) == 0:
+			if i >= len(annotations) or np.sum(annotations[i]) == 0:
 				features[i] = features[i - 1]
 			else:
 				x, y, w, h = annotations[i]
 				frame = frame[y:y+h, x:x+w]
 
 				landmarks = landmark_predictor.detect_landmarks(frame)
-
 				frame = extractor.extract_roi(frame, landmarks).astype(np.float32)
 
 				frame[frame < 1.0] = np.nan
@@ -119,6 +118,8 @@ class GenericDatasetLoader:
 				if is_annotation(file):
 					annotations.append("{0}/{1}".format(root, file))
 
+		video_locations = sorted(video_locations)
+		annotations = sorted(annotations)
 		folder_features = None
 		k = 0
 		for video, annotation in zip(video_locations, annotations):
@@ -129,15 +130,15 @@ class GenericDatasetLoader:
 			if folder_features is None:
 				folder_features = np.empty([len(video_locations),
 											video_data.shape[0],
-											3])
+											3], dtype=np.float32)
+
 			else:
 				if video_data.shape[0] != folder_features.shape[1]:
 					new_video_data = np.zeros(folder_features.shape[1:])
 					new_video_data[:video_data.shape[0]] = video_data
 					video_data = new_video_data.copy()
 
-				folder_features[k] = video_data
-
+			folder_features[k] = video_data			
 			k += 1
 		
 		return folder_features
@@ -146,14 +147,14 @@ class GenericDatasetLoader:
 class ReplayAttackLoader:
 	@staticmethod
 	def __load_by_split(source, split):
-		split_attack = GenericDatasetLoader.walk_and_load_from(
-			"{0}/{1}/attack".format(source, split),
-			"{0}/face-locations/{1}/attack".format(source, split)
+		split_real = GenericDatasetLoader.walk_and_load_from(
+			"{0}/{1}/real".format(source, split),
+			"{0}/face-locations/{1}/real".format(source, split)
 		)
 
 		split_attack = GenericDatasetLoader.walk_and_load_from(
-			"{0}/{1}/read".format(source, split),
-			"{0}/face-locations/{1}/read".format(source, split)
+			"{0}/{1}/attack".format(source, split),
+			"{0}/face-locations/{1}/attack".format(source, split)
 		)
 
 		return split_attack, split_real
@@ -170,23 +171,71 @@ class ReplayAttackLoader:
 	def load_test(source):
 		return ReplayAttackLoader.__load_by_split(source, 'test')
 
+	@staticmethod
+	def load_and_store(source, destination):
+		train_attack, train_real = ReplayAttackLoader.load_train(source)
+		devel_attack, devel_real = ReplayAttackLoader.load_devel(source)
+		test_attack, test_real = ReplayAttackLoader.load_test(source)
+
+		np.save("./rad_train_fake.npy", train_attack)
+		np.save("./rad_train_real.npy", train_real)
+
+		np.save("./rad_test_fake.npy", test_attack)
+		np.save("./rad_test_real.npy", test_real)
+
+		np.save("./rad_devel_fake.npy", devel_attack)
+		np.save("./rad_devel_real.npy", devel_real)
+
+
+class SpoofInTheWildLoader:
+	@staticmethod
+	def __load_by_split(source, split):
+		split_live = GenericDatasetLoader.walk_and_load_from(
+			"{0}/{1}/live".format(source, split),
+			"{0}/{1}/live".format(source, split)
+		)
+
+		split_spoof = GenericDatasetLoader.walk_and_load_from(
+			"{0}/{1}/spoof".format(source, split),
+			"{0}/{1}/spoof".format(source, split)
+		)
+
+		return split_live, split_spoof
+
+	@staticmethod
+	def load_train(source):
+		return SpoofInTheWildLoader.__load_by_split(source, 'Train')
+
+	@staticmethod
+	def load_test(source):
+		return SpoofInTheWildLoader.__load_by_split(source, 'Test')
+
+def get_args():
+	parser = argparse.ArgumentParser(description="Código para extração das \
+										bases de dados de PAD como SiW e \
+										ReplayAttack")
+
+	parser.add_argument("source", nargs=None, default=None, action="store")
+	parser.add_argument("dest", nargs=None, default=None, action="store")
+	parser.add_argument("time", nargs=None, default=5, action="store", type=int)
+
+	return parser.parse_args()
+
 if __name__ == "__main__":
-	train_fake, train_real = ReplayAttackLoader.load_train("./videos/ReplayAttack")
-	devel_fake, devel_real = ReplayAttackLoader.load_train("./videos/ReplayAttack")
-	test_fake, test_real = ReplayAttackLoader.load_train("./videos/ReplayAttack")
+	args = get_args()
+	if args.source.endswith('ReplayAttack'):
+		ReplayAttackLoader.load_and_store(args.source, args.dest)
+	else:
+		print("Base de dados não suportada.")
+	# train_fake, train_real = ReplayAttackLoader.load_train("./videos/ReplayAttack")
+	# devel_fake, devel_real = ReplayAttackLoader.load_train("./videos/ReplayAttack")
+	# test_fake, test_real = ReplayAttackLoader.load_train("./videos/ReplayAttack")
 
-	np.save("./train_fake.npy", train_fake)
-	np.save("./train_real.npy", train_real)
+	# np.save("./train_fake.npy", train_fake)
+	# np.save("./train_real.npy", train_real)
 
-	np.save("./test_fake.npy", test_fake)
-	np.save("./test_real.npy", test_real)
+	# np.save("./test_fake.npy", test_fake)
+	# np.save("./test_real.npy", test_real)
 	
-	np.save("./devel_fake.npy", devel_fake)
-	np.save("./devel_real.npy", devel_real)
-
-
-	# t0 = time.time()
-	# features = AnnotatedVideoLoader.load_features("./videos/motion.avi", None)
-	# final_time = time.time() - t0
-	# print(features.shape)
-	# print(900.0 / final_time)
+	# np.save("./devel_fake.npy", devel_fake)
+	# np.save("./devel_real.npy", devel_real)
