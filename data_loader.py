@@ -187,20 +187,21 @@ class ReplayAttackLoader:
 
 	@staticmethod
 	def load_and_store(source, destination):
-		train_attack, train_real = ReplayAttackLoader.load_train(source)
-		devel_attack, devel_real = ReplayAttackLoader.load_devel(source)
-		test_attack, test_real = ReplayAttackLoader.load_test(source)
+		destination_files = os.listdir(destination)
+		if "rad_train_real.npy" not in destination_files:	
+			train_attack, train_real = ReplayAttackLoader.load_train(source)
+			np.save("{0}/rad_train_fake.npy".format(destination), train_attack)
+			np.save("{0}/rad_train_real.npy".format(destination), train_real)			
+		
+		if "rad_devel_real.npy" not in destination_files:
+			devel_attack, devel_real = ReplayAttackLoader.load_devel(source)
+			np.save("{0}/rad_devel_fake.npy".format(destination), devel_attack)
+			np.save("{0}/rad_devel_real.npy".format(destination), devel_real)
 
-		np.save("{0}/rad_train_fake.npy".format(destination), train_attack)
-		np.save("{0}/rad_train_real.npy".format(destination), train_real)
-
-		np.save("{0}/rad_test_fake.npy".format(destination), test_attack)
-		np.save("{0}/rad_test_real.npy".format(destination), test_real)
-
-		np.save("{0}/rad_devel_fake.npy".format(destination), devel_attack)
-		np.save("{0}/rad_devel_real.npy".format(destination), devel_real)
-
-		pass
+		if "rad_test_real.npy" not in destination_files:
+			test_attack, test_real = ReplayAttackLoader.load_test(source)
+			np.save("{0}/rad_test_fake.npy".format(destination), test_attack)
+			np.save("{0}/rad_test_real.npy".format(destination), test_real)
 
 
 class SpoofInTheWildLoader:
@@ -241,8 +242,6 @@ class SpoofInTheWildLoader:
 		np.save("{0}/siw_test_live.npy", test_live)
 		np.save("{0}/siw_test_spoof.npy", test_spoof)
 
-		pass
-
 
 def get_args():
 	parser = argparse.ArgumentParser(description="Código para extração das \
@@ -255,11 +254,57 @@ def get_args():
 
 	return parser.parse_args()
 
+
+def slice_and_stride(data, size, stride):	
+	def slice_and_stride_video(video):
+		slices = list()
+		for i in range(0, len(video), stride):
+			if i + size <= len(video):
+				slices.append(video[i:i+size])
+		
+		return np.array(slices)
+
+	data_slice = None
+	for i in range(len(data)):
+		sl = slice_and_stride_video(data[i])
+		if data_slice is None:
+			data_slice = sl
+		else:
+			data_slice = np.append(data_slice, sl, axis = 0)
+
+	return data_slice
+
 if __name__ == "__main__":
 	args = get_args()
 	if args.source.endswith('ReplayAttack'):
-		ReplayAttackLoader.load_and_store(args.source, args.dest)
+		def slice_partition(name, size, stride, prefix='rad'):
+			split_fake = np.load("{0}/rad_{1}_fake.npy".format(args.dest, name))
+			split_real = np.load("{0}/rad_{1}_real.npy".format(args.dest, name))
+			
+			slice_split_fake = slice_and_stride(split_fake, size, stride)
+			slice_split_real = slice_and_stride(split_real, size, stride)
+			split = np.append(slice_split_fake, slice_split_real, axis = 0)
+			
+			labels_split_fake = np.zeros([len(slice_split_fake)])
+			labels_split_real = np.ones([len(slice_split_real)])
+			labels = np.append(labels_split_fake, labels_split_real)
+			
+			np.save("{0}/{1}_{2}_x.npy".format(args.dest, prefix, name), split)
+			np.save("{0}/{1}_{2}_y.npy".format(args.dest, prefix, name), labels)
+
+		frame_rate = 24
+		video_size = frame_rate * args.time
+		if 'rad_train_real.npy' not in os.listdir(args.dest):
+			ReplayAttackLoader.load_and_store(args.source, args.dest)
+
+		slice_partition('train', video_size, 1)
+		slice_partition('devel', video_size, 1)
+		slice_partition('test', video_size, 1)
+
 	elif args.source.endswith('SiW_release'):
-		SpoofInTheWildLoader.load_and_store(args.source, args.dest)
+		if 'siw_train_live.npy' not in os.listdir(args.dest):
+			SpoofInTheWildLoader.load_and_store(args.source, args.dest)
+
+		print("TODO")
 	else:
 		print("Base de dados não suportada.")
