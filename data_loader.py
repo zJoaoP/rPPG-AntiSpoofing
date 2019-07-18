@@ -14,8 +14,8 @@ class AsyncVideoLoader:
 	def __init__(self, source, width=None, height=None):
 		self.capture = cv2.VideoCapture(source)
 		if (width is not None) and (height is not None):
-			self.capture.set(CV_CAP_PROP_FRAME_WIDTH, width);
-			self.capture.set(CV_CAP_PROP_FRAME_HEIGHT, height);
+			self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, width);
+			self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height);
 
 		self.read_lock = threading.Lock()
 		self.started = False
@@ -61,20 +61,30 @@ class AsyncVideoLoader:
 
 class AnnotatedVideoLoader:
 	@staticmethod
-	def load_features(source, annotation, width=None, height=None):
+	def load_features(source, annotation, width=None, height=None, points=False):
 		print("[DataLoader] Extracting features from '{0}'.".format(source))
 
 		def load_annotations(annotation_location):
+			def is_digit(n):
+				try:
+					int(n)
+					return True
+				except ValueError:
+					return False
+
 			with open(annotation_location) as file:
 				annotations = []
 				for line in file.readlines():
-					annotation_line = [int(i) for i in line[:-1].split(' ') if i.isdigit()]
+					annotation_line = [int(i) for i in line[:-1].split(' ') if is_digit(i)]
 					if len(annotation_line) > 4:
 						annotation_line = annotation_line[-4:]
 
 					annotations += [annotation_line]
 
 			return np.array(annotations)
+	
+		def map_value(x, in_min, in_max, out_min, out_max):
+			return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
 		loader = AsyncVideoLoader(source=source, width=width, height=height).start()
 		landmark_predictor = LandmarkPredictor()
@@ -86,17 +96,37 @@ class AnnotatedVideoLoader:
 		for i in range(loader.lenght()):
 			success, frame = loader.read()
 			# cv2.waitKey(1) & 0xFF
+			def is_negative_annotation(annotation):
+				for i in annotation:
+					if i < 0:
+						return True
+				return False
+			
+			def is_null_annotation(annotation):
+				for i in annotation:
+					if i == 0:
+						return True
+				return False
 
-			if (i >= len(annotations)) or (np.sum(annotations[i]) == 0):
-				features[i] = features[i - 1]
+			if (i >= len(annotations)) or (is_null_annotation(annotations[i])) or (is_negative_annotation(annotations[i])) or (len(annotations[i]) != 4):
+				if i == 0:
+					features[i] = 0
+				else:
+					features[i] = features[i - 1]
 			else:
 				x, y, w, h = annotations[i]
-				frame = frame[y:y+h, x:x+w]
+				if width is not None:
+					x, y, w, h = [map_value(x, 1920, 1080, width, height) for x in annotations[i]]
+					
+				if not points:
+					frame = frame[y:y+h, x:x+w]
+				else:
+					frame = frame[y:h, x:w]
 
 				landmarks = landmark_predictor.detect_landmarks(frame)
 				frame = extractor.extract_roi(frame, landmarks).astype(np.float32)
 
-				frame[frame < 1.0] = np.nan
+				frame[frame == 0.0] = np.nan
 				features[i] = np.nanmean(frame, axis=(0, 1))
 
 		loader.stop()
@@ -107,7 +137,7 @@ class AnnotatedVideoLoader:
 class GenericDatasetLoader:
 	@staticmethod
 	def walk_and_load_from(root_folder, annotations_folder,	
-										width=None, height=None):
+										width=None, height=None, points=False):
 		def is_video(filename):
 			return 	filename.endswith(".mp4")\
 					or filename.endswith(".mov")
@@ -136,7 +166,8 @@ class GenericDatasetLoader:
 							source=video,
 							annotation=annotation,
 							width=width,
-							height=height)
+							height=height,
+							points=points)
 
 			if folder_features is None:
 				folder_features = np.empty([len(video_locations),
@@ -211,14 +242,16 @@ class SpoofInTheWildLoader:
 			"{0}/{1}/live".format(source, split),
 			"{0}/{1}/live".format(source, split),
 			width=1280,
-			height=720
+			height=720,
+			points=True
 		)
 
 		split_spoof = GenericDatasetLoader.walk_and_load_from(
 			"{0}/{1}/spoof".format(source, split),
 			"{0}/{1}/spoof".format(source, split),
 			width=1280,
-			height=720
+			height=720,
+			points=True
 		)
 
 		return split_live, split_spoof
@@ -236,11 +269,11 @@ class SpoofInTheWildLoader:
 		train_live, train_spoof = SpoofInTheWildLoader.load_train(source)
 		test_live, test_spoof = SpoofInTheWildLoader.load_test(source)
 
-		np.save("{0}/siw_train_live.npy", train_live)
-		np.save("{0}/siw_train_spoof.npy", train_spoof)
+		np.save("{0}/siw_train_live.npy".format(destination), train_live)
+		np.save("{0}/siw_train_spoof.npy".format(destination), train_spoof)
 
-		np.save("{0}/siw_test_live.npy", test_live)
-		np.save("{0}/siw_test_spoof.npy", test_spoof)
+		np.save("{0}/siw_test_live.npy".format(destination), test_live)
+		np.save("{0}/siw_test_spoof.npy".format(destination), test_spoof)
 
 
 def get_args():
@@ -292,6 +325,7 @@ if __name__ == "__main__":
 			np.save("{0}/{1}_{2}_x.npy".format(args.dest, prefix, name), split)
 			np.save("{0}/{1}_{2}_y.npy".format(args.dest, prefix, name), labels)
 
+
 		frame_rate = 24
 		video_size = frame_rate * args.time
 		if 'rad_train_real.npy' not in os.listdir(args.dest):
@@ -302,9 +336,28 @@ if __name__ == "__main__":
 		slice_partition('test', video_size, 1)
 
 	elif args.source.endswith('SiW_release'):
+		def slice_partition(name, size, stride, prefix='rad'):
+			split_spoof = np.load("{0}/siw_{1}_spoof.npy".format(args.dest, name))
+			split_live = np.load("{0}/siw_{1}_live.npy".format(args.dest, name))
+			
+			slice_split_spoof = slice_and_stride(split_spoof, size, stride)
+			slice_split_live = slice_and_stride(split_live, size, stride)
+			split = np.append(slice_split_spoof, slice_split_live, axis = 0)
+			
+			labels_split_spoof = np.zeros([len(slice_split_spoof)])
+			labels_split_live = np.ones([len(slice_split_live)])
+			labels = np.append(labels_split_spoof, labels_split_live)
+			
+			np.save("{0}/{1}_{2}_x.npy".format(args.dest, prefix, name), split)
+			np.save("{0}/{1}_{2}_y.npy".format(args.dest, prefix, name), labels)
+
+
 		if 'siw_train_live.npy' not in os.listdir(args.dest):
 			SpoofInTheWildLoader.load_and_store(args.source, args.dest)
 
-		print("TODO")
+		frame_rate = 30
+		video_size = frame_rate * args.time
+		slice_partition('train', video_size, 1)
+		slice_partition('test', video_size, 1)
 	else:
 		print("Base de dados não suportada.")
