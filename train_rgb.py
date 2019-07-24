@@ -5,33 +5,93 @@ import cv2
 import os
 
 
-from keras.layers import Dense, Flatten, BatchNormalization, Activation
-from keras.layers import Conv1D, MaxPooling1D, GlobalAveragePooling1D
+from keras.layers import Dense, BatchNormalization, Activation, Flatten, LSTM
+from keras.layers import Conv1D, GlobalAveragePooling1D, Input, MaxPooling1D
 from keras.callbacks import ModelCheckpoint
+from keras.models import Model, Sequential
 from keras.utils import to_categorical
-from keras.models import Sequential
 from keras.optimizers import Adam
 
-def build_model(input_shape, learning_rate = 1e-3):
-	def FPR(y_true, y_pred):
+def build_model(input_shape, learning_rate=1e-3):
+	def FAR(y_true, y_pred):
 		y_true = K.argmax(y_true)
 		y_pred = K.argmax(y_pred)
-		return K.mean(K.all([1 - y_true, y_pred], axis = 0))
+		return K.mean(K.all([1 - y_true, y_pred], axis=0))
 
-	def FNR(y_true, y_pred):
+	def FRR(y_true, y_pred):
 		y_true = K.argmax(y_true)
 		y_pred = K.argmax(y_pred)
-		return K.mean(K.all([1 - y_pred, y_true], axis = 0))
+		return K.mean(K.all([1 - y_pred, y_true], axis=0))
 
+	def HTER(y_true, y_pred):
+		far = FAR(y_true, y_pred)
+		frr = FRR(y_true, y_pred)
+		return (far + frr) / 2.0
+
+	def APCER(y_true, y_pred):
+		zero = K.variable(0)
+		one = K.variable(1)
+		y_true = K.cast(K.argmax(y_true, axis=1), dtype='float32')
+		y_pred = K.cast(K.argmax(y_pred, axis=1), dtype='float32')
+		
+		true_classifications = K.equal(y_true, y_pred)
+		zero_classifications = K.equal(y_pred, zero)
+		true_zeros = K.all([true_classifications, zero_classifications], axis=0)
+		
+		attack_count = K.sum(K.cast(K.equal(y_true, zero), dtype='float32'))
+		class_score = K.sum(K.cast(true_zeros, 'float32'))
+		return K.switch(K.equal(attack_count, zero),
+						zero,
+						one - (class_score / attack_count))
+
+	def BPCER(y_true, y_pred):
+		zero = K.variable(0)
+		one = K.variable(1)
+		y_true = K.cast(K.argmax(y_true, axis=1), dtype='float32')
+		y_pred = K.cast(K.argmax(y_pred, axis=1), dtype='float32')
+		
+		true_classifications = K.equal(y_true, y_pred)
+		one_classifications = K.equal(y_pred, one)
+		true_ones = K.all([true_classifications, one_classifications], axis=0)
+		
+		real_count = K.sum(K.cast(K.equal(y_true, one), dtype='float32'))
+		class_score = K.sum(K.cast(true_ones, 'float32'))
+		return K.switch(K.equal(real_count, zero),
+						zero,
+						one - (class_score / real_count))
+
+	def ACER(y_true, y_pred):
+		apcer = APCER(y_true, y_pred)
+		bpcer = BPCER(y_true, y_pred)
+
+		return (apcer + bpcer) / 2
+
+	from keras.layers import Reshape
 	model = Sequential()
 
-	model.add(Flatten(input_shape=input_shape))
+	model.add(Conv1D(64, kernel_size=7, strides=1,
+							activation='linear',
+							use_bias=False,
+							input_shape=input_shape))
+
+	model.add(BatchNormalization())
+	model.add(Activation('relu'))
+	
+	model.add(Flatten())
+	
 	model.add(Dense(2, activation='sigmoid'))
+
+	# def triplet_loss(margin=1.0):
+	# 	import tensorflow as tf
+	# 	def triplet_semihard(y_true, y_pred):
+	# 		return tf.contrib.losses.metric_learning.triplet_semihard_loss(K.argmax(y_true, axis=1), y_pred, margin)
+
+	# 	return triplet_semihard
 
 	model.compile(
 		optimizer=Adam(lr=learning_rate),
-		loss='binary_crossentropy',
-		metrics=['accuracy', FPR, FNR]
+		loss="binary_crossentropy",
+		metrics=['accuracy', APCER, BPCER, ACER]
 	)
 	model.summary()
 	return model
@@ -46,14 +106,39 @@ def build_parser():
 							help = "Localização dos arquivos pré-processdos. \
 									(Padrão: %(default)s)")
 
-	parser.add_argument("--time", default = 5, type = int,
-							help = "Tempo (em segundos) de captura ou análise. \
-									(Padrão: %(default)s segundos)")
-
 	parser.add_argument("--prefix", default = 'rad', type = str,
 							help = "Prefixo do dataset a ser utilizado. \
 									(Padrão: %(default)s)")
 	return parser.parse_args()
+
+
+def draw_multicolored_line(y, score):
+	import matplotlib.pyplot as plt
+	x = np.array(list(range(len(y))))
+	y = np.array(y)
+
+	score = np.array(score)
+	color_map = np.array([[1.0, i/255.0, 0] for i in range(255, -1, -1)])
+
+	if score.max() != 1.0 and score.min() != 0.0:
+		score = (score - score.min()) / (score.max() - score.min())
+
+	points = np.array([x, y]).T.reshape(-1, 1, 2)
+	segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+	k = 0
+	for start_point, end_point in segments:
+		ex, ey = end_point
+		x, y = start_point
+
+		current_color = color_map[int(score[k] * 255)]
+
+		plt.plot([x, ex], [y, ey], color=current_color)
+		k += 1
+
+
+	plt.show()
+
 
 if __name__ == "__main__":
 	args = build_parser()
@@ -75,18 +160,71 @@ if __name__ == "__main__":
 			return p_x, to_categorical(p_y, 2)
 
 		train_x, train_y = load_partition('train')
-		devel_x, devel_y = load_partition('devel')
+		devel_x, devel_y = load_partition('devel', flip=True)
 		test_x, test_y = load_partition('test', flip=False)
 
-		model = build_model(train_x[0].shape)
+		model = build_model(train_x[0].shape, learning_rate=1e-3)
 		model_ckpt = ModelCheckpoint('./models/model.ckpt', monitor='val_acc',
 															save_best_only=True,
 															verbose=1)
 
-		model.fit(x=train_x, y=train_y, epochs=500, batch_size=16,
+		model.fit(x=train_x, y=train_y, epochs=100, batch_size=16,
 										validation_data=(devel_x, devel_y),
-										callbacks = [model_ckpt])
+										callbacks=[model_ckpt])
 
 		model.load_weights('./models/model.ckpt')
 		result = model.evaluate(x=test_x, y=test_y)
 		print(result)
+		
+		sample = test_x[0].reshape(240)
+		print(sample.shape)
+
+		w, _ = model.get_layer('dense_1').get_weights()
+
+		score = w.T[0]
+		draw_multicolored_line(sample, score)
+
+		score = w.T[1]
+		draw_multicolored_line(sample, score)
+	elif args.prefix == 'siw':
+		train_x = np.load('{0}/siw_train_x.npy'.format(args.source))
+		train_y = np.load('{0}/siw_train_y.npy'.format(args.source))
+
+		test_x = np.load('{0}/siw_test_x.npy'.format(args.source))
+		test_y = np.load('{0}/siw_test_y.npy'.format(args.source))
+		
+		train_x = np.append(train_x, np.flip(train_x, axis=1), axis=0)
+		train_y = np.append(train_y, train_y)
+
+		train_y = to_categorical(train_y, 2)
+		test_y = to_categorical(test_y, 2)
+
+		train_x = train_x / 255.0
+		test_x = test_x / 255.0
+
+		train_x = np.nan_to_num(train_x)
+		test_x = np.nan_to_num(test_x)
+
+		def shuffle(a, b):
+			rng_state = np.random.get_state()
+			np.random.shuffle(a)
+			np.random.set_state(rng_state)
+			np.random.shuffle(b)
+
+
+		shuffle(train_x, train_y)
+
+		model = build_model(train_x[0].shape, learning_rate=1e-4)
+
+		model_ckpt = ModelCheckpoint('./models/model.ckpt', monitor='val_acc',
+															save_best_only=True,
+															verbose=1)
+
+		model.fit(x=train_x, y=train_y, epochs=100,
+										batch_size=16,
+										validation_split=0.25,
+										callbacks=[model_ckpt])
+
+		model.load_weights('./models/model.ckpt')
+		results = model.evaluate(test_x, test_y)
+		print(results)

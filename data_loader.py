@@ -75,6 +75,7 @@ class AnnotatedVideoLoader:
 			with open(annotation_location) as file:
 				annotations = []
 				for line in file.readlines():
+					line = line.replace(',', ' ')
 					annotation_line = [int(i) for i in line[:-1].split(' ') if is_digit(i)]
 					if len(annotation_line) > 4:
 						annotation_line = annotation_line[-4:]
@@ -140,10 +141,12 @@ class GenericDatasetLoader:
 										width=None, height=None, points=False):
 		def is_video(filename):
 			return 	filename.endswith(".mp4")\
-					or filename.endswith(".mov")
+					or filename.endswith(".mov")\
+					or filename.endswith(".avi")
 
 		def is_annotation(filename):
-			return 	filename.endswith(".face")
+			return 	filename.endswith(".face")\
+					or filename.endswith(".txt")
 
 		video_locations = list()
 		for root, dirs, files in os.walk(root_folder):
@@ -276,6 +279,44 @@ class SpoofInTheWildLoader:
 		np.save("{0}/siw_test_spoof.npy".format(destination), test_spoof)
 
 
+class OuluLoader:
+	@staticmethod
+	def __load_by_split(source, split):
+		split_full = GenericDatasetLoader.walk_and_load_from(
+			"{0}/{1}/".format(source, split),
+			"{0}/{1}/".format(source, split),
+		)
+		split_names = list()
+		for name in sorted(os.listdir("{0}/{1}".format(source, split))):
+			if name.endswith('.avi'):
+				split_names.append(name.split('.')[0])
+
+		return split_full, split_names
+
+	@staticmethod
+	def load_train(source):
+		return OuluLoader.__load_by_split(source, 'Train_Files')
+
+	@staticmethod
+	def load_devel(source):
+		return OuluLoader.__load_by_split(source, 'Dev_Files')
+
+	@staticmethod
+	def load_test(source):
+		return OuluLoader.__load_by_split(source, 'Test_Files')
+
+	@staticmethod
+	def load_and_store(source, destination):
+		train = OuluLoader.load_train(source)
+		devel = OuluLoader.load_devel(source)
+		test = OuluLoader.load_test(source)
+
+		np.save("{0}/oulu_train_full.npy".format(source), train)
+		np.save("{0}/oulu_devel_full.npy".format(source), devel)
+		np.save("{0}/oulu_test_full.npy".format(source), test)
+
+		#Store file names!
+
 def get_args():
 	parser = argparse.ArgumentParser(description="Código para extração das \
 										bases de dados de PAD como SiW e \
@@ -316,7 +357,7 @@ if __name__ == "__main__":
 			
 			slice_split_fake = slice_and_stride(split_fake, size, stride)
 			slice_split_real = slice_and_stride(split_real, size, stride)
-			split = np.append(slice_split_fake, slice_split_real, axis = 0)
+			split = np.append(slice_split_fake, slice_split_real, axis=0)
 			
 			labels_split_fake = np.zeros([len(slice_split_fake)])
 			labels_split_real = np.ones([len(slice_split_real)])
@@ -336,28 +377,86 @@ if __name__ == "__main__":
 		slice_partition('test', video_size, 1)
 
 	elif args.source.endswith('SiW_release'):
-		def slice_partition(name, size, stride, prefix='rad'):
-			split_spoof = np.load("{0}/siw_{1}_spoof.npy".format(args.dest, name))
-			split_live = np.load("{0}/siw_{1}_live.npy".format(args.dest, name))
-			
-			slice_split_spoof = slice_and_stride(split_spoof, size, stride)
-			slice_split_live = slice_and_stride(split_live, size, stride)
-			split = np.append(slice_split_spoof, slice_split_live, axis = 0)
-			
-			labels_split_spoof = np.zeros([len(slice_split_spoof)])
-			labels_split_live = np.ones([len(slice_split_live)])
-			labels = np.append(labels_split_spoof, labels_split_live)
-			
-			np.save("{0}/{1}_{2}_x.npy".format(args.dest, prefix, name), split)
-			np.save("{0}/{1}_{2}_y.npy".format(args.dest, prefix, name), labels)
-
-
 		if 'siw_train_live.npy' not in os.listdir(args.dest):
 			SpoofInTheWildLoader.load_and_store(args.source, args.dest)
 
 		frame_rate = 30
 		video_size = frame_rate * args.time
-		slice_partition('train', video_size, 1)
-		slice_partition('test', video_size, 1)
+		
+		protocol = 2
+		if protocol == 1:
+			def load_first_protocol(name):
+				live = np.load('{0}/siw_{1}_live.npy'.format(args.dest, name))
+				spoof = np.load('{0}/siw_{1}_spoof.npy'.format(args.dest, name))
+				
+				live = live[:, :60]
+				spoof = spoof[:, :60]
+
+				part = np.append(spoof, live, axis=0)
+				labels = np.append(np.zeros(len(spoof)), np.ones(len(live)))
+
+				np.save('{0}/siw_{1}_x.npy'.format(args.dest, name), part)
+				np.save('{0}/siw_{1}_y.npy'.format(args.dest, name), labels)
+
+			load_first_protocol('train')
+			load_first_protocol('test')
+		elif protocol == 2:
+			#Aplicar data augmentation
+			#(E não apenas truncar pelo tamanho máximo do vídeo)
+
+			leave_out_medium = 4
+			def load_hints(part):
+				def parse_name(name):
+					result = name.split('-')
+					result[-1] = result[-1].split('.')[0]
+					return [int(i) for i in result]
+
+				names = list()
+				with open(part, 'r') as file:
+					for line in file:
+						names.append(parse_name(line))
+
+				return names
+
+			train_x, test_x = None, None
+			train_y, test_y = list(), list()
+			def load_second_protocol(part, label):
+				global train_x, test_x
+				global train_y, test_y
+
+				items = np.load('{0}/{1}.npy'.format(args.dest, part))
+				hints = load_hints('{0}/{1}.txt'.format(args.dest, part))
+				for i in range(len(items)):
+					item = items[i][:video_size]
+					if hints[i][3] == leave_out_medium:
+						if test_x is None:
+							test_x = item.reshape(1, video_size, 3)
+						else:
+							test_x = np.append(test_x, np.array([item]), axis=0)
+
+						test_y.append(label)
+					else:
+						if train_x is None:
+							train_x = item.reshape(1, video_size, 3)
+						else:
+							train_x = np.append(train_x, np.array([item]), axis=0)
+						
+						train_y.append(label)
+
+			load_second_protocol('siw_train_spoof', 0)
+			load_second_protocol('siw_train_live', 1)
+			load_second_protocol('siw_test_spoof', 0)
+			load_second_protocol('siw_test_live', 1)	
+
+			np.save('{0}/siw_train_x.npy'.format(args.dest), np.array(train_x))
+			np.save('{0}/siw_test_x.npy'.format(args.dest), np.array(test_x))
+			
+			np.save('{0}/siw_train_y.npy'.format(args.dest), np.array(train_y))
+			np.save('{0}/siw_test_y.npy'.format(args.dest), np.array(test_y))
+	elif args.source.endswith('Oulu_NPU'):
+		if 'oulu_train_full.npy' not in os.listdir(args.dest):
+			OuluLoader.load_and_store(args.source, args.dest)
+
+		print("TODO")
 	else:
 		print("Base de dados não suportada.")
