@@ -169,14 +169,18 @@ class GenericDatasetLoader:
 				if is_video(file):
 					video_locations.append("{0}/{1}".format(root, file))
 
-		annotations = list()
-		for root, dirs, files in os.walk(annotations_folder):
-			for file in files:
-				if is_annotation(file):
-					annotations.append("{0}/{1}".format(root, file))
+		if annotations_folder is not None:
+			annotations = list()
+			for root, dirs, files in os.walk(annotations_folder):
+				for file in files:
+					if is_annotation(file):
+						annotations.append("{0}/{1}".format(root, file))
+	
+			annotations = sorted(annotations)
+		else:
+			annotations = None
 
 		video_locations = sorted(video_locations)
-		annotations = sorted(annotations)
 		folder_features = None
 		k = 0
 		for video, annotation in zip(video_locations, annotations):
