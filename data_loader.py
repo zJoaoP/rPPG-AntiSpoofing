@@ -61,7 +61,7 @@ class AsyncVideoLoader:
 
 class AnnotatedVideoLoader:
 	@staticmethod
-	def load_features(source, annotation, width=None, height=None, points=False):
+	def load_features(source, annotation=None, width=None, height=None, points=False):
 		print("[DataLoader] Extracting features from '{0}'.".format(source))
 
 		def load_annotations(annotation_location):
@@ -88,11 +88,12 @@ class AnnotatedVideoLoader:
 			return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
 		loader = AsyncVideoLoader(source=source, width=width, height=height).start()
-		landmark_predictor = LandmarkPredictor()
+		predictor = LandmarkPredictor()
 		extractor = CheeksAndNose()
 
 		features = np.empty([loader.lenght(), 3], dtype=np.float32)
-		annotations = load_annotations(annotation)
+		if annotation is not None:
+			annotations = load_annotations(annotation)
 
 		for i in range(loader.lenght()):
 			success, frame = loader.read()
@@ -109,22 +110,36 @@ class AnnotatedVideoLoader:
 						return True
 				return False
 
-			if (i >= len(annotations)) or (is_null_annotation(annotations[i])) or (is_negative_annotation(annotations[i])) or (len(annotations[i]) != 4):
-				if i == 0:
-					features[i] = 0
-				else:
-					features[i] = features[i - 1]
+			if (annotation is not None) and ((i >= len(annotations))
+												or (is_null_annotation(annotations[i]))
+												or (is_negative_annotation(annotations[i]))
+												or (len(annotations[i]) != 4)):
+				
+				features[i] = 0 if i == 0 else features[i - 1]
 			else:
-				x, y, w, h = annotations[i]
-				if width is not None:
-					x, y, w, h = [map_value(x, 1920, 1080, width, height) for x in annotations[i]]
-					
-				if not points:
-					frame = frame[y:y+h, x:x+w]
-				else:
-					frame = frame[y:h, x:w]
+				if annotation is None:
+					rect = predictor.detect_face(frame)
+					if rect is None:
+						features[i] = 0 if (i == 0) else features[i - 1]
+					else:
+						left = rect.left()
+						right = rect.right()
+						top = rect.top()
+						bottom = rect.bottom()
 
-				landmarks = landmark_predictor.detect_landmarks(frame)
+						frame = frame[top:bottom, left:right]
+				else:				
+					x, y, w, h = annotations[i]
+					if width is not None:
+						x, y, w, h = [map_value(x, 1920, 1080, width, height)
+										for x in annotations[i]]
+						
+					if not points:
+						frame = frame[y:y+h, x:x+w]
+					else:
+						frame = frame[y:h, x:w]
+
+				landmarks = predictor.detect_landmarks(frame)
 				frame = extractor.extract_roi(frame, landmarks).astype(np.float32)
 
 				frame[frame == 0.0] = np.nan
@@ -284,7 +299,7 @@ class OuluLoader:
 	def __load_by_split(source, split):
 		split_full = GenericDatasetLoader.walk_and_load_from(
 			"{0}/{1}".format(source, split),
-			"{0}/{1}".format(source, split),
+			None,
 		)
 		return split_full
 
