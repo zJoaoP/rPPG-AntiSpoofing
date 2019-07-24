@@ -183,7 +183,10 @@ class GenericDatasetLoader:
 		video_locations = sorted(video_locations)
 		folder_features = None
 		k = 0
-		for video, annotation in zip(video_locations, annotations):
+		for i in range(len(video_locations)):
+			video = video_locations[i]
+			annotation = annotations[i] if annotations is not None else None
+
 			video_data = AnnotatedVideoLoader.load_features(
 							source=video,
 							annotation=annotation,
