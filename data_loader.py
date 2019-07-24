@@ -283,37 +283,32 @@ class OuluLoader:
 	@staticmethod
 	def __load_by_split(source, split):
 		split_full = GenericDatasetLoader.walk_and_load_from(
-			"{0}/{1}/".format(source, split),
-			"{0}/{1}/".format(source, split),
+			"{0}/{1}".format(source, split),
+			"{0}/{1}".format(source, split),
 		)
-		split_names = list()
-		for name in sorted(os.listdir("{0}/{1}".format(source, split))):
-			if name.endswith('.avi'):
-				split_names.append(name.split('.')[0])
-
-		return split_full, split_names
+		return split_full
 
 	@staticmethod
 	def load_train(source):
-		return OuluLoader.__load_by_split(source, 'Train_Files')
+		return OuluLoader.__load_by_split(source, 'Train_files')
 
 	@staticmethod
 	def load_devel(source):
-		return OuluLoader.__load_by_split(source, 'Dev_Files')
+		return OuluLoader.__load_by_split(source, 'Dev_files')
 
 	@staticmethod
 	def load_test(source):
-		return OuluLoader.__load_by_split(source, 'Test_Files')
+		return OuluLoader.__load_by_split(source, 'Test_files')
 
 	@staticmethod
 	def load_and_store(source, destination):
 		train = OuluLoader.load_train(source)
-		devel = OuluLoader.load_devel(source)
+		devel =  OuluLoader.load_devel(source)
 		test = OuluLoader.load_test(source)
 
-		np.save("{0}/oulu_train_full.npy".format(source), train)
-		np.save("{0}/oulu_devel_full.npy".format(source), devel)
-		np.save("{0}/oulu_test_full.npy".format(source), test)
+		np.save("{0}/oulu_train_full.npy".format(destination), train)
+		np.save("{0}/oulu_devel_full.npy".format(destination), devel)
+		np.save("{0}/oulu_test_full.npy".format(destination), test)
 
 		#Store file names!
 
