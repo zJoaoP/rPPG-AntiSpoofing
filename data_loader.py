@@ -144,6 +144,8 @@ class AnnotatedVideoLoader:
 
 				frame[frame == 0.0] = np.nan
 				features[i] = np.nanmean(frame, axis=(0, 1))
+				if np.sum(features[i]) == 0.0 and i > 0:
+					features[i] = features[i - 1]
 
 		loader.stop()
 		

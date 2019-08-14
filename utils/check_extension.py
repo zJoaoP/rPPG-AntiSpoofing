@@ -27,7 +27,7 @@ def get_args():
 if __name__ == '__main__':
 	args = get_args()
 
-	file_names = list_files_in(args.source, '.face')
+	file_names = list_files_in(args.source, '.txt')
 	with open(args.dest, 'w') as file:
 		for name in file_names:
 			file.write("{}\n".format(name))
