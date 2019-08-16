@@ -66,10 +66,9 @@ def build_model(input_shape, learning_rate=1e-3):
 
 		return (apcer + bpcer) / 2
 
-	from keras.layers import Reshape
 	model = Sequential()
 
-	model.add(Conv1D(64, kernel_size=7, strides=1,
+	model.add(Conv1D(128, kernel_size=7, strides=2,
 							activation='linear',
 							use_bias=False,
 							input_shape=input_shape))
@@ -77,9 +76,16 @@ def build_model(input_shape, learning_rate=1e-3):
 	model.add(BatchNormalization())
 	model.add(Activation('relu'))
 	
+	model.add(Conv1D(64, kernel_size=5, strides=2,
+							activation='linear',
+							use_bias=False))
+
+	model.add(BatchNormalization())
+	model.add(Activation('relu'))
+	
 	model.add(Flatten())
 	
-	model.add(Dense(2, activation='sigmoid'))
+	model.add(Dense(2, activation='softmax'))
 
 	# def triplet_loss(margin=1.0):
 	# 	import tensorflow as tf
@@ -112,34 +118,6 @@ def build_parser():
 	return parser.parse_args()
 
 
-def draw_multicolored_line(y, score):
-	import matplotlib.pyplot as plt
-	x = np.array(list(range(len(y))))
-	y = np.array(y)
-
-	score = np.array(score)
-	color_map = np.array([[1.0, i/255.0, 0] for i in range(255, -1, -1)])
-
-	if score.max() != 1.0 and score.min() != 0.0:
-		score = (score - score.min()) / (score.max() - score.min())
-
-	points = np.array([x, y]).T.reshape(-1, 1, 2)
-	segments = np.concatenate([points[:-1], points[1:]], axis=1)
-
-	k = 0
-	for start_point, end_point in segments:
-		ex, ey = end_point
-		x, y = start_point
-
-		current_color = color_map[int(score[k] * 255)]
-
-		plt.plot([x, ex], [y, ey], color=current_color)
-		k += 1
-
-
-	plt.show()
-
-
 if __name__ == "__main__":
 	args = build_parser()
 	os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
@@ -160,7 +138,7 @@ if __name__ == "__main__":
 			return p_x, to_categorical(p_y, 2)
 
 		train_x, train_y = load_partition('train')
-		devel_x, devel_y = load_partition('devel', flip=True)
+		devel_x, devel_y = load_partition('devel', flip=False)
 		test_x, test_y = load_partition('test', flip=False)
 
 		model = build_model(train_x[0].shape, learning_rate=1e-3)
@@ -172,20 +150,6 @@ if __name__ == "__main__":
 										validation_data=(devel_x, devel_y),
 										callbacks=[model_ckpt])
 
-		model.load_weights('./models/model.ckpt')
-		result = model.evaluate(x=test_x, y=test_y)
-		print(result)
-		
-		sample = test_x[0].reshape(240)
-		print(sample.shape)
-
-		w, _ = model.get_layer('dense_1').get_weights()
-
-		score = w.T[0]
-		draw_multicolored_line(sample, score)
-
-		score = w.T[1]
-		draw_multicolored_line(sample, score)
 	elif args.prefix == 'siw':
 		train_x = np.load('{0}/siw_train_x.npy'.format(args.source))
 		train_y = np.load('{0}/siw_train_y.npy'.format(args.source))
@@ -220,9 +184,9 @@ if __name__ == "__main__":
 															save_best_only=True,
 															verbose=1)
 
-		model.fit(x=train_x, y=train_y, epochs=100,
+		model.fit(x=train_x, y=train_y, epochs=200,
 										batch_size=16,
-										validation_split=0.25,
+										validation_split=0.30,
 										callbacks=[model_ckpt])
 
 		model.load_weights('./models/model.ckpt')
