@@ -28,7 +28,12 @@ class Wang(DefaultStrategy):
 			if m > 0:
 				Cin = Cn[m : n, :]
 				S = np.matmul(np.array([[0, 1, -1], [-2, 1, 1]]), Cin.T)
-				H = S[0] + (np.std(S[0]) / np.std(S[1])) * S[1]
+				std_1 = np.std(S[1])
+				if std_1 > 0.0:
+					H = S[0] + (np.std(S[0]) / np.std(S[1])) * S[1]
+				else:
+					H = S[0]
+
 				signal[m : n] += (H - np.mean(H))
 
 		signal = DefaultStrategy.bandpass_filter(signal,
@@ -37,4 +42,4 @@ class Wang(DefaultStrategy):
 												max_freq=4.0, 
 												order=get_order(len(signal)))
 		
-		return (signal - np.mean(signal)) / np.std(signal)
+		return signal

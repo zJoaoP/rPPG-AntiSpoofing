@@ -241,8 +241,26 @@ def slice_and_stride(data, size, stride):
 		if data_slice is None:
 			data_slice = sl
 		else:
-			data_slice = np.append(data_slice, sl, axis = 0)
+			data_slice = np.append(data_slice, sl, axis=0)
 
 	return data_slice
 
+from algorithms.wang import Wang
+def get_rppg_data(data, frame_rate=25):
+	final_data = None
+	nan_locations = np.isnan(data)
+	data[nan_locations] = 0.0
+	for i in range(len(data)):
+		current_rppg = Wang.extract_rppg(data[i], frame_rate)
+		if final_data is None:
+			final_data = np.empty([len(data), current_rppg.shape[0], 1])
+
+		final_data[i] = current_rppg.reshape(current_rppg.shape[0], 1)
+
+		if (i > 0) and (i % 256 == 0):
+			print("[Wang] {0} / {1} rPPG features processed.".format(i,
+																	 len(data)))
+
+	print(final_data.shape)
+	return final_data
 	

@@ -5,9 +5,9 @@ import cv2
 import os
 
 
-from keras.layers import Dense, BatchNormalization, Activation, Flatten, LSTM
-from keras.layers import Conv1D, GlobalAveragePooling1D, Input, MaxPooling1D
-from keras.callbacks import ModelCheckpoint
+from keras.layers import Dense, BatchNormalization, Activation, Flatten
+from keras.layers import Conv1D, Input, MaxPooling1D, Concatenate
+from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.models import Model, Sequential
 from keras.utils import to_categorical
 from keras.optimizers import Adam
@@ -29,36 +29,22 @@ def build_model(input_shape, learning_rate=1e-3):
 		return (far + frr) / 2.0
 
 	def APCER(y_true, y_pred):
-		zero = K.variable(0)
-		one = K.variable(1)
 		y_true = K.cast(K.argmax(y_true, axis=1), dtype='float32')
 		y_pred = K.cast(K.argmax(y_pred, axis=1), dtype='float32')
-		
-		true_classifications = K.equal(y_true, y_pred)
-		zero_classifications = K.equal(y_pred, zero)
-		true_zeros = K.all([true_classifications, zero_classifications], axis=0)
-		
-		attack_count = K.sum(K.cast(K.equal(y_true, zero), dtype='float32'))
-		class_score = K.sum(K.cast(true_zeros, 'float32'))
-		return K.switch(K.equal(attack_count, zero),
-						zero,
-						one - (class_score / attack_count))
+		count_fake = K.sum(1 - y_true)
+
+		false_positives = K.all([K.equal(y_true, 0), K.equal(y_pred, 1)], axis=0)
+		false_positives = K.sum(K.cast(false_positives, dtype='float32'))
+		return K.switch(K.equal(count_fake, 0), 0.0, false_positives / count_fake)
 
 	def BPCER(y_true, y_pred):
-		zero = K.variable(0)
-		one = K.variable(1)
 		y_true = K.cast(K.argmax(y_true, axis=1), dtype='float32')
 		y_pred = K.cast(K.argmax(y_pred, axis=1), dtype='float32')
-		
-		true_classifications = K.equal(y_true, y_pred)
-		one_classifications = K.equal(y_pred, one)
-		true_ones = K.all([true_classifications, one_classifications], axis=0)
-		
-		real_count = K.sum(K.cast(K.equal(y_true, one), dtype='float32'))
-		class_score = K.sum(K.cast(true_ones, 'float32'))
-		return K.switch(K.equal(real_count, zero),
-						zero,
-						one - (class_score / real_count))
+		count_real = K.sum(y_true)
+
+		false_negatives = K.all([K.equal(y_true, 1), K.equal(y_pred, 0)], axis=0)
+		false_negatives = K.sum(K.cast(false_negatives, dtype='float32'))
+		return K.switch(K.equal(count_real, 0), 0.0, false_negatives / count_real)
 
 	def ACER(y_true, y_pred):
 		apcer = APCER(y_true, y_pred)
@@ -66,37 +52,31 @@ def build_model(input_shape, learning_rate=1e-3):
 
 		return (apcer + bpcer) / 2
 
-	model = Sequential()
+	input_rppg = Input(shape=(input_shape[0], 1))
+	input_rgb = Input(shape=input_shape)
 
-	model.add(Conv1D(128, kernel_size=7, strides=2,
-							activation='linear',
-							use_bias=False,
-							input_shape=input_shape))
+	ppg_branch = Conv1D(64, kernel_size=5, strides=2, activation='linear', use_bias=False)(input_rppg)
+	ppg_branch = BatchNormalization()(ppg_branch)
+	ppg_branch = Activation('relu')(ppg_branch)
 
-	model.add(BatchNormalization())
-	model.add(Activation('relu'))
-	
-	model.add(Conv1D(64, kernel_size=5, strides=2,
-							activation='linear',
-							use_bias=False))
+	rgb_branch = Conv1D(64, kernel_size=5, strides=2, activation='linear', use_bias=False)(input_rgb)
+	rgb_branch = BatchNormalization()(rgb_branch)
+	rgb_branch = Activation('relu')(rgb_branch)
 
-	model.add(BatchNormalization())
-	model.add(Activation('relu'))
-	
-	model.add(Flatten())
-	
-	model.add(Dense(2, activation='softmax'))
+	ppg_branch = Flatten()(ppg_branch)
+	rgb_branch = Flatten()(rgb_branch)
 
-	# def triplet_loss(margin=1.0):
-	# 	import tensorflow as tf
-	# 	def triplet_semihard(y_true, y_pred):
-	# 		return tf.contrib.losses.metric_learning.triplet_semihard_loss(K.argmax(y_true, axis=1), y_pred, margin)
+	# ppg_branch = Flatten()(input_rppg)
+	# rgb_branch = Flatten()(input_rgb)
 
-	# 	return triplet_semihard
+	combined_branch = Concatenate()([rgb_branch, ppg_branch])
+	combined_branch = Dense(2, activation='softmax')(combined_branch)
+
+	model = Model([input_rgb, input_rppg], combined_branch)
 
 	model.compile(
 		optimizer=Adam(lr=learning_rate),
-		loss="binary_crossentropy",
+		loss="categorical_crossentropy",
 		metrics=['accuracy', APCER, BPCER, ACER]
 	)
 	model.summary()
@@ -151,14 +131,13 @@ if __name__ == "__main__":
 										callbacks=[model_ckpt])
 
 	elif args.prefix == 'siw':
+		train_rppg_x = np.load('{0}/siw_train_rppg_x.npy'.format(args.source))
 		train_x = np.load('{0}/siw_train_x.npy'.format(args.source))
 		train_y = np.load('{0}/siw_train_y.npy'.format(args.source))
 
+		test_rppg_x = np.load('{0}/siw_test_rppg_x.npy'.format(args.source))
 		test_x = np.load('{0}/siw_test_x.npy'.format(args.source))
 		test_y = np.load('{0}/siw_test_y.npy'.format(args.source))
-		
-		train_x = np.append(train_x, np.flip(train_x, axis=1), axis=0)
-		train_y = np.append(train_y, train_y)
 
 		train_y = to_categorical(train_y, 2)
 		test_y = to_categorical(test_y, 2)
@@ -184,11 +163,48 @@ if __name__ == "__main__":
 															save_best_only=True,
 															verbose=1)
 
-		model.fit(x=train_x, y=train_y, epochs=200,
-										batch_size=16,
-										validation_split=0.30,
-										callbacks=[model_ckpt])
+		model.fit(x=[train_x, train_rppg_x], y=train_y,
+											 epochs=200,
+											 batch_size=16,
+											 validation_split=0.25,
+											 callbacks=[model_ckpt])
 
 		model.load_weights('./models/model.ckpt')
-		results = model.evaluate(test_x, test_y)
-		print(results)
+		results_train = model.evaluate([train_x, train_rppg_x], train_y, batch_size=16)
+		results_test = model.evaluate([test_x, test_rppg_x], test_y, batch_size=16)
+
+		print(results_train)
+		print(results_test)
+		
+		y_pred_raw = model.predict([test_x, test_rppg_x], verbose=0)
+		def evaluate_by_threshold(x, y, threshold=0.0):
+			y_true = np.argmax(y, axis=1)
+			n_fake = np.sum(1 - y_true)
+			n_real = np.sum(y_true)
+
+			real_prob = y_pred_raw[:, 1]
+			
+			y_pred = np.argmax(y_pred_raw, axis=1)
+			for i in range(len(y)):
+				y_pred[i] = int(real_prob[i] >= threshold)
+
+			apcer = np.sum(np.all([y_true == 0, y_pred == 1], axis=0)) / n_fake
+			bpcer = np.sum(np.all([y_true == 1, y_pred == 0], axis=0)) / n_real
+			acc = np.sum(y_pred == y_true, dtype=np.float64) / len(y_true)
+
+			return apcer, bpcer, acc
+
+		best_acer, best_th = 1.0, 0.0
+		for th in np.arange(0.0, 1.01, 0.01):
+			apcer, bpcer, acc = evaluate_by_threshold(test_x, test_y, th)
+			acer = (apcer + bpcer) / 2.0
+			print("%.2f : (%f, %f, %f, %f)" % (th, acc, apcer, bpcer, acer))
+
+			if acer < best_acer:
+				best_acer = acer
+				best_th = th
+
+		print(best_th)
+		apcer, bpcer, _ = evaluate_by_threshold(test_x, test_y, best_th)
+		print(apcer)
+		print(bpcer)

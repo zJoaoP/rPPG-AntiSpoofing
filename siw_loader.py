@@ -1,4 +1,4 @@
-from utils.loaders import GenericDatasetLoader
+from utils.loaders import GenericDatasetLoader, get_rppg_data
 import numpy as np
 import argparse
 import os
@@ -90,7 +90,7 @@ if __name__ == "__main__":
 		load_first_protocol('train')
 		load_first_protocol('test')
 	elif args.protocol == 2: # Apply data augmentation.
-		leave_out_medium = 1
+		leave_out_medium = 4
 		def load_second_protocol(part):
 			def is_valid_insertion(hint):
 				label = 1 if hint[2] == 1 else 0
@@ -140,7 +140,63 @@ if __name__ == "__main__":
 		np.save('{0}/siw_test_y.npy'.format(args.dest), np.array(test_y))
 
 	elif args.protocol == 3:
+		train_with_print = True
+		test_with_print = not train_with_print
 		def load_third_protocol(part):
-			pass
+			def is_valid_insertion(hint):
+				if hint[2] == 1:
+					return True
+				elif (part == 'train') and (hint[2] == 2) and train_with_print:
+					return True
+				elif (part == 'test') and (hint[2] == 2) and test_with_print:
+					return True
+				elif (part == 'train') and (hint[2] == 3) and test_with_print:
+					return True
+				elif (part == 'test') and (hint[2] == 3) and train_with_print:
+					return True
+				else:
+					return False
 
-		pass
+
+			part_x, part_y = None, None
+			for category in ['spoof', 'live']:
+				data = np.load('{0}/siw_{1}_{2}.npy'.format(args.dest,
+															part,
+															category))
+
+				hints = load_hints('{0}/siw_{1}_{2}.txt'.format(args.dest,
+																part,
+																category))
+
+				for i in range(len(data)):
+					if is_valid_insertion(hints[i]):
+						x = data[i][:video_size]
+						y = 1 if hints[i][2] == 1 else 0
+
+						if part_x is None:
+							part_x = np.array([x])
+							part_y = list([y])
+						else:
+							part_x = np.append(part_x, np.array([x]), axis=0)
+							part_y.append(y)
+
+			print(part_x.shape)
+			return part_x, np.array(part_y)
+
+		train_x, train_y = load_third_protocol('train')
+		test_x, test_y = load_third_protocol('test')
+
+		np.save('{0}/siw_train_x.npy'.format(args.dest), np.array(train_x))
+		np.save('{0}/siw_test_x.npy'.format(args.dest), np.array(test_x))
+		
+		np.save('{0}/siw_train_y.npy'.format(args.dest), np.array(train_y))
+		np.save('{0}/siw_test_y.npy'.format(args.dest), np.array(test_y))
+
+	train_x = np.load('{0}/siw_train_x.npy'.format(args.dest))
+	test_x = np.load('{0}/siw_test_x.npy'.format(args.dest))
+
+	rppg_train_x = get_rppg_data(train_x, frame_rate=frame_rate)
+	rppg_test_x = get_rppg_data(test_x, frame_rate=frame_rate)
+
+	np.save('{0}/siw_train_rppg_x.npy'.format(args.dest), rppg_train_x)
+	np.save('{0}/siw_test_rppg_x.npy'.format(args.dest), rppg_test_x)
