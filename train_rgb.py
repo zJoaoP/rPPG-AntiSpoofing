@@ -5,7 +5,7 @@ import cv2
 import os
 
 
-from keras.layers import Dense, BatchNormalization, Activation, Flatten
+from keras.layers import Dense, BatchNormalization, Activation, Flatten, Lambda
 from keras.layers import Conv1D, Input, MaxPooling1D, Concatenate
 from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.models import Model, Sequential
@@ -52,32 +52,62 @@ def build_model(input_shape, learning_rate=1e-3):
 
 		return (apcer + bpcer) / 2
 
+	from keras.layers import GlobalAveragePooling1D
+
 	input_rppg = Input(shape=(input_shape[0], 1))
 	input_rgb = Input(shape=input_shape)
 
-	ppg_branch = Conv1D(64, kernel_size=5, strides=2, activation='linear', use_bias=False)(input_rppg)
+	ppg_branch = Conv1D(128, kernel_size=5, strides=2, activation='linear', use_bias=False)(input_rppg)
 	ppg_branch = BatchNormalization()(ppg_branch)
 	ppg_branch = Activation('relu')(ppg_branch)
 
-	rgb_branch = Conv1D(64, kernel_size=5, strides=2, activation='linear', use_bias=False)(input_rgb)
+	rgb_branch = Conv1D(128, kernel_size=5, strides=2, activation='linear', use_bias=False)(input_rgb)
 	rgb_branch = BatchNormalization()(rgb_branch)
 	rgb_branch = Activation('relu')(rgb_branch)
 
-	ppg_branch = Flatten()(ppg_branch)
-	rgb_branch = Flatten()(rgb_branch)
+	ppg_branch = GlobalAveragePooling1D()(ppg_branch)
+	rgb_branch = GlobalAveragePooling1D()(rgb_branch)
 
 	# ppg_branch = Flatten()(input_rppg)
 	# rgb_branch = Flatten()(input_rgb)
 
-	combined_branch = Concatenate()([rgb_branch, ppg_branch])
-	combined_branch = Dense(2, activation='softmax')(combined_branch)
+	embeddings_branch = Concatenate()([rgb_branch, ppg_branch])
+	embeddings_branch = Lambda(lambda x : K.l2_normalize(x, axis=1), name="embeddings")(embeddings_branch)
+	combined_branch = Dense(2, activation='softmax', name='classification')(embeddings_branch)
 
-	model = Model([input_rgb, input_rppg], combined_branch)
+	model = Model([input_rgb, input_rppg], [combined_branch, embeddings_branch])
+
+	def triplet_loss(margin=1.0):
+		import tensorflow as tf
+		def semihard_triplet_loss(y_true, y_pred):
+			return tf.contrib.losses.metric_learning.triplet_semihard_loss(K.argmax(y_true, axis=1),
+																		   y_pred,
+																		   margin)
+
+		return semihard_triplet_loss
+
+	def focal_loss(gamma=2., alpha=.25):
+		import tensorflow as tf
+		def focal_loss_fixed(y_true, y_pred):
+			pt_1 = tf.where(tf.equal(y_true, 1), y_pred, tf.ones_like(y_pred))
+			pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
+			return -K.mean(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1)) - K.mean((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0))
+		return focal_loss_fixed
+
+	losses = {
+		'embeddings' : triplet_loss(),
+		'classification' : 'categorical_crossentropy'
+	}
+
+	metrics = {
+		'embeddings' : [],
+		'classification' : ['accuracy', APCER, BPCER, ACER]
+	}
 
 	model.compile(
 		optimizer=Adam(lr=learning_rate),
-		loss="categorical_crossentropy",
-		metrics=['accuracy', APCER, BPCER, ACER]
+		loss=losses,
+		metrics=metrics
 	)
 	model.summary()
 	return model
@@ -157,54 +187,55 @@ if __name__ == "__main__":
 
 		shuffle(train_x, train_y)
 
-		model = build_model(train_x[0].shape, learning_rate=1e-4)
+		model = build_model(train_x[0].shape, learning_rate=1e-3)
 
-		model_ckpt = ModelCheckpoint('./models/model.ckpt', monitor='val_acc',
+		model_ckpt = ModelCheckpoint('./models/model.ckpt', monitor='val_classification_ACER',
 															save_best_only=True,
 															verbose=1)
 
-		model.fit(x=[train_x, train_rppg_x], y=train_y,
-											 epochs=200,
+		model.fit(x=[train_x, train_rppg_x], y=[train_y, train_y],
+											 epochs=1000,
 											 batch_size=16,
 											 validation_split=0.25,
 											 callbacks=[model_ckpt])
 
 		model.load_weights('./models/model.ckpt')
-		results_train = model.evaluate([train_x, train_rppg_x], train_y, batch_size=16)
-		results_test = model.evaluate([test_x, test_rppg_x], test_y, batch_size=16)
+		results_train = model.evaluate([train_x, train_rppg_x], [train_y, train_y], batch_size=16)
+		results_test = model.evaluate([test_x, test_rppg_x], [test_y, test_y], batch_size=16)
 
+		print(model.metrics_names)
 		print(results_train)
 		print(results_test)
 		
-		y_pred_raw = model.predict([test_x, test_rppg_x], verbose=0)
-		def evaluate_by_threshold(x, y, threshold=0.0):
-			y_true = np.argmax(y, axis=1)
-			n_fake = np.sum(1 - y_true)
-			n_real = np.sum(y_true)
+		# y_pred_raw = model.predict([test_x, test_rppg_x], verbose=0)
+		# def evaluate_by_threshold(x, y, threshold=0.0):
+		# 	y_true = np.argmax(y, axis=1)
+		# 	n_fake = np.sum(1 - y_true)
+		# 	n_real = np.sum(y_true)
 
-			real_prob = y_pred_raw[:, 1]
+		# 	real_prob = y_pred_raw[:, 1]
 			
-			y_pred = np.argmax(y_pred_raw, axis=1)
-			for i in range(len(y)):
-				y_pred[i] = int(real_prob[i] >= threshold)
+		# 	y_pred = np.argmax(y_pred_raw, axis=1)
+		# 	for i in range(len(y)):
+		# 		y_pred[i] = int(real_prob[i] >= threshold)
 
-			apcer = np.sum(np.all([y_true == 0, y_pred == 1], axis=0)) / n_fake
-			bpcer = np.sum(np.all([y_true == 1, y_pred == 0], axis=0)) / n_real
-			acc = np.sum(y_pred == y_true, dtype=np.float64) / len(y_true)
+		# 	apcer = np.sum(np.all([y_true == 0, y_pred == 1], axis=0)) / n_fake
+		# 	bpcer = np.sum(np.all([y_true == 1, y_pred == 0], axis=0)) / n_real
+		# 	acc = np.sum(y_pred == y_true, dtype=np.float64) / len(y_true)
 
-			return apcer, bpcer, acc
+		# 	return apcer, bpcer, acc
 
-		best_acer, best_th = 1.0, 0.0
-		for th in np.arange(0.0, 1.01, 0.01):
-			apcer, bpcer, acc = evaluate_by_threshold(test_x, test_y, th)
-			acer = (apcer + bpcer) / 2.0
-			print("%.2f : (%f, %f, %f, %f)" % (th, acc, apcer, bpcer, acer))
+		# best_acer, best_th = 1.0, 0.0
+		# for th in np.arange(0.0, 1.01, 0.01):
+		# 	apcer, bpcer, acc = evaluate_by_threshold(test_x, test_y, th)
+		# 	acer = (apcer + bpcer) / 2.0
+		# 	print("%.2f : (%f, %f, %f, %f)" % (th, acc, apcer, bpcer, acer))
 
-			if acer < best_acer:
-				best_acer = acer
-				best_th = th
+		# 	if acer < best_acer:
+		# 		best_acer = acer
+		# 		best_th = th
 
-		print(best_th)
-		apcer, bpcer, _ = evaluate_by_threshold(test_x, test_y, best_th)
-		print(apcer)
-		print(bpcer)
+		# print(best_th)
+		# apcer, bpcer, _ = evaluate_by_threshold(test_x, test_y, best_th)
+		# print(apcer)
+		# print(bpcer)
