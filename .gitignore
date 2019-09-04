@@ -1,9 +1,9 @@
 *.pyc
 *.avi
 *.dat
+*.ckpt
+*.png
+*.txt
 /env/
 /p_data/
-/models/
 /videos/
-/best_models/
-/logs/
