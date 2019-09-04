@@ -21,17 +21,6 @@ class GenericArchitecture:
 		str_representation = "{0} : {1}".format(arch_name, results)
 		return str_representation
 
-	@staticmethod
-	def triplet_loss(margin=1.0):
-			triplet_semihard_loss = tf.contrib.losses.metric_learning.triplet_semihard_loss
-			def __triplet_loss(y_true, y_pred):
-				from keras.losses import categorical_crossentropy
-				triplet_contribution = triplet_semihard_loss(K.argmax(y_true, axis=1), y_pred)
-				classification_contribution = categorical_crossentropy(y_true, y_pred)
-				return triplet_contribution + classification_contribution
-
-			return __triplet_loss
-
 	def get_model(self):
 		return self.model
 
@@ -254,10 +243,20 @@ class TripletRGB(GenericArchitecture):
 		embeddings = Lambda(lambda x : K.l2_normalize(x, axis=1))(embeddings)
 		classification = Dense(2, activation='softmax')(embeddings)
 
+		def triplet_loss(margin=1.0):
+			triplet_semihard_loss = tf.contrib.losses.metric_learning.triplet_semihard_loss
+			def __triplet_loss(y_true, y_pred):
+				from keras.losses import categorical_crossentropy
+				triplet_contribution = triplet_semihard_loss(K.argmax(y_true, axis=1), y_pred)
+				classification_contribution = categorical_crossentropy(y_true, y_pred)
+				return triplet_contribution + classification_contribution
+
+			return __triplet_loss
+
 		model = Model(input_layer, classification)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
-			loss=GenericArchitecture.triplet_loss(margin=1.0),
+			loss=triplet_loss(margin=1.0),
 			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
@@ -301,11 +300,21 @@ class TripletRPPG(GenericArchitecture):
 
 		combined_branch = Concatenate()([rgb_branch, ppg_branch])
 		classification = Dense(2, activation='softmax')(combined_branch)
+		
+		def triplet_loss(margin=1.0):
+			triplet_semihard_loss = tf.contrib.losses.metric_learning.triplet_semihard_loss
+			def __triplet_loss(y_true, y_pred):
+				from keras.losses import categorical_crossentropy
+				triplet_contribution = triplet_semihard_loss(K.argmax(y_true, axis=1), y_pred)
+				classification_contribution = categorical_crossentropy(y_true, y_pred)
+				return triplet_contribution + classification_contribution
+
+			return __triplet_loss
 
 		model = Model([input_rgb, input_ppg], classification)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
-			loss=GenericArchitecture.triplet_loss(margin=1.0),
+			loss=triplet_loss(margin=1.0),
 			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
