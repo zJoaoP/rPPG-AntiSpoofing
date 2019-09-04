@@ -15,7 +15,7 @@ class Wang(DefaultStrategy):
 		if window_size is None:
 			window_size = int(frame_rate * 1.6)
 
-		signal = np.zeros(len(temporal_means), dtype=np.float64)
+		signal = np.zeros(len(temporal_means), dtype=np.float32)
 		num_frames = len(temporal_means)
 
 		for i in range(3):
