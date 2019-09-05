@@ -76,8 +76,13 @@ if __name__ == "__main__":
 		train_x = train_x / 255.0
 		test_x = test_x / 255.0
 
-		train_x = np.nan_to_num(train_x)
-		test_x = np.nan_to_num(test_x)
+		def solve_nan_positions(data):
+			isnan = np.isnan(data)
+			data[isnan == True] = 0.0
+			return data
+
+		train_x = solve_nan_positions(train_x)
+		test_x = solve_nan_positions(test_x)
 
 		def shuffle(a, b):
 			rng_state = np.random.get_state()
