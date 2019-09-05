@@ -84,14 +84,16 @@ if __name__ == "__main__":
 		train_x = solve_nan_positions(train_x)
 		test_x = solve_nan_positions(test_x)
 
-		def shuffle(a, b):
+		def shuffle(a, b, c):
 			rng_state = np.random.get_state()
 			np.random.shuffle(a)
 			np.random.set_state(rng_state)
 			np.random.shuffle(b)
+			np.random.set_state(rng_state)
+			np.random.shuffle(c)
 
 
-		shuffle(train_x, train_y)
+		shuffle(train_x, train_rppg_x, train_y)
 
 		from model.structures import SimpleConvolutionalRPPG
 		from model.structures import SimpleConvolutionalRGB
@@ -110,11 +112,13 @@ if __name__ == "__main__":
 						 FlatRGB,
 						 FlatRPPG]
 
+		frame_rate = 30
 		batch_size = 16
 		verbose = False
 		epochs = 1000
+		time = train_x.shape[1] // frame_rate
 		for arch in architectures:
-			arch_model = arch(frame_rate=30, lr=1e-4, verbose=verbose)
+			arch_model = arch(time=time, frame_rate=30, lr=1e-4, verbose=verbose)
 			arch_name = type(arch_model).__name__
 
 			model_dest = "./model/models/{0}.ckpt".format(arch_name)
@@ -128,7 +132,7 @@ if __name__ == "__main__":
 										  batch_size=batch_size,
 										  validation_split=0.25,
 										  callbacks=[model_ckpt])
-				
+
 				print(arch_model.evaluate(test_x, test_y))
 			else:
 				arch_model.fit(x=[train_x, train_rppg_x], y=train_y,
