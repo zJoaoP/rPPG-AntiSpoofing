@@ -7,7 +7,7 @@ import os
 
 from keras.layers import Dense, BatchNormalization, Activation, Flatten, Lambda
 from keras.layers import Conv1D, Input, MaxPooling1D, Concatenate
-from keras.callbacks import ModelCheckpoint, TensorBoard
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.models import Model, Sequential
 from keras.utils import to_categorical
 from keras.utils import plot_model
@@ -31,13 +31,19 @@ def build_parser():
 
 if __name__ == "__main__":
 	args = build_parser()
-	os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+	os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+	train_x, train_rppg_x, train_y = [None] * 3
+	devel_x, devel_rppg_x, devel_y = [None] * 3
+	test_x, test_rppg_x, test_y = [None] * 3
 	if args.prefix == 'rad':
-		def load_partition(name, flip=True):
+		def load_partition(name, flip=False):
 			p_x = np.load("{0}/{1}_{2}_x.npy".format(args.source,
 														args.prefix,
 														name))
 			p_y = np.load("{0}/{1}_{2}_y.npy".format(args.source,
+														args.prefix,
+														name))
+			ppg_x = np.load("{0}/{1}_{2}_ppg.npy".format(args.source,
 														args.prefix,
 														name))
 			
@@ -46,21 +52,11 @@ if __name__ == "__main__":
 				p_y = np.append(p_y, p_y)
 
 			p_x = p_x / 255.0
-			return p_x, to_categorical(p_y, 2)
+			return p_x, ppg_x, to_categorical(p_y, 2)
 
-		train_x, train_y = load_partition('train')
-		devel_x, devel_y = load_partition('devel', flip=False)
-		test_x, test_y = load_partition('test', flip=False)
-
-		model = build_model(train_x[0].shape, learning_rate=1e-3)
-		model_ckpt = ModelCheckpoint('./models/model.ckpt', monitor='val_acc',
-															save_best_only=True,
-															verbose=1)
-
-		model.fit(x=train_x, y=train_y, epochs=100, batch_size=16,
-										validation_data=(devel_x, devel_y),
-										callbacks=[model_ckpt])
-
+		train_x, train_rppg_x, train_y = load_partition('train')
+		devel_x, devel_rppg_x, devel_y = load_partition('devel')
+		test_x, test_rppg_x, test_y = load_partition('test')
 	elif args.prefix == 'siw':
 		train_rppg_x = np.load('{0}/siw_train_rppg_x.npy'.format(args.source))
 		train_x = np.load('{0}/siw_train_x.npy'.format(args.source))
@@ -125,13 +121,14 @@ if __name__ == "__main__":
 			model_ckpt = ModelCheckpoint(model_dest, monitor='val_ACER',
 													 save_best_only=True,
 													 verbose=verbose)
-
+			early_stopping = EarlyStopping(monitor='val_ACER', patience=100)
+			callbacks = [model_ckpt, early_stopping]
 			if not arch_model.uses_rppg():
 				arch_model.fit(x=train_x, y=train_y,
 										  epochs=epochs,
 										  batch_size=batch_size,
 										  validation_split=0.25,
-										  callbacks=[model_ckpt])
+										  callbacks=callbacks)
 
 				print(arch_model.evaluate(test_x, test_y))
 			else:
@@ -139,7 +136,7 @@ if __name__ == "__main__":
 														  epochs=epochs,
 														  batch_size=batch_size,
 														  validation_split=0.25,
-														  callbacks=[model_ckpt])
+														  callbacks=callbacks)
 
 				print(arch_model.evaluate([test_x, test_rppg_x], test_y))
 
