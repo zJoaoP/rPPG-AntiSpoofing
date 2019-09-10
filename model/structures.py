@@ -3,6 +3,7 @@ import tensorflow as tf
 
 
 from keras.layers import Input, Flatten, Conv1D, GlobalAveragePooling1D
+from keras.layers import BatchNormalization, Activation
 from keras.layers import Concatenate, Lambda, Dense
 from model.metrics import APCER, BPCER, ACER
 from keras.optimizers import Adam
@@ -61,7 +62,11 @@ class SimpleConvolutionalRGB(GenericArchitecture):
 
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
-		x = Conv1D(64, kernel_size=5, strides=1, activation='relu')(input_layer)
+		
+		x = Conv1D(64, kernel_size=5, strides=1, activation='linear')(input_layer)
+		x = BatchNormalization()(x)
+		x = Activation('relu')(x)
+
 		x = GlobalAveragePooling1D()(x)
 		x = Dense(2, activation='softmax')(x)
 
@@ -89,8 +94,14 @@ class DeepConvolutionalRGB(GenericArchitecture):
 
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
-		x = Conv1D(64, kernel_size=5, strides=2, activation='relu')(input_layer)
-		x = Conv1D(128, kernel_size=5, strides=2, activation='relu')(x)
+		x = Conv1D(64, kernel_size=5, strides=2, activation='linear')(input_layer)
+		x = BatchNormalization()(x)
+		x = Activation('relu')(x)
+
+		x = Conv1D(128, kernel_size=5, strides=2, activation='linear')(x)
+		x = BatchNormalization()(x)
+		x = Activation('relu')(x)
+
 		x = GlobalAveragePooling1D()(x)
 		x = Dense(2, activation='softmax')(x)
 
@@ -153,11 +164,15 @@ class SimpleConvolutionalRPPG(GenericArchitecture):
 		
 		rgb_branch = Conv1D(64, kernel_size=5,
 								strides=1,
-								activation='relu')(input_rgb)
+								activation='linear')(input_rgb)
+		rgb_branch = BatchNormalization()(rgb_branch)
+		rgb_branch = Activation('relu')(rgb_branch)
 		
 		ppg_branch = Conv1D(64, kernel_size=5,
 								strides=1,
-								activation='relu')(input_ppg)
+								activation='linear')(input_ppg)
+		ppg_branch = BatchNormalization()(ppg_branch)
+		ppg_branch = Activation('relu')(ppg_branch)
 
 		rgb_branch = GlobalAveragePooling1D()(rgb_branch)
 		ppg_branch = GlobalAveragePooling1D()(ppg_branch)
@@ -190,23 +205,18 @@ class DeepConvolutionalRPPG(GenericArchitecture):
 	def build_model(self, input_dim):
 		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
 		input_ppg = Input(shape=(input_dim, 1), name='input_ppg')
+
+		def ConvWithBN(input_layer, filters):
+			x = Conv1D(filters, kernel_size=5, strides=2, activation='linear')(input_layer)
+			x = BatchNormalization()(x)
+			return Activation('relu')(x)
+
+		rgb_branch = ConvWithBN(input_rgb, 64)
+		rgb_branch = ConvWithBN(rgb_branch, 128)
+
+		ppg_branch = ConvWithBN(input_ppg, 64)
+		ppg_branch = ConvWithBN(ppg_branch, 128)
 		
-		rgb_branch = Conv1D(64, kernel_size=5,
-								strides=2,
-								activation='relu')(input_rgb)
-
-		rgb_branch = Conv1D(128, kernel_size=5,
-								strides=2,
-								activation='relu')(rgb_branch)
-		
-		ppg_branch = Conv1D(64, kernel_size=5,
-								strides=2,
-								activation='relu')(input_ppg)
-
-		ppg_branch = Conv1D(128, kernel_size=5,
-								strides=2,
-								activation='relu')(ppg_branch)
-
 		rgb_branch = GlobalAveragePooling1D()(rgb_branch)
 		ppg_branch = GlobalAveragePooling1D()(ppg_branch)
 
@@ -237,8 +247,14 @@ class TripletRGB(GenericArchitecture):
 
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
-		embeddings = Conv1D(64, kernel_size=5, strides=2, activation='relu')(input_layer)
-		embeddings = Conv1D(128, kernel_size=5, strides=2, activation='relu')(embeddings)
+		embeddings = Conv1D(64, kernel_size=5, strides=2, activation='linear')(input_layer)
+		embeddings = BatchNormalization()(embeddings)
+		embeddings = Activation('relu')(embeddings)
+
+		embeddings = Conv1D(128, kernel_size=5, strides=2, activation='linear')(embeddings)
+		embeddings = BatchNormalization()(embeddings)
+		embeddings = Activation('relu')(embeddings)
+
 		embeddings = GlobalAveragePooling1D()(embeddings)
 		embeddings = Lambda(lambda x : K.l2_normalize(x, axis=1))(embeddings)
 		classification = Dense(2, activation='softmax')(embeddings)
@@ -247,7 +263,7 @@ class TripletRGB(GenericArchitecture):
 			triplet_semihard_loss = tf.contrib.losses.metric_learning.triplet_semihard_loss
 			def __triplet_loss(y_true, y_pred):
 				from keras.losses import categorical_crossentropy
-				triplet_contribution = triplet_semihard_loss(K.argmax(y_true, axis=1), y_pred)
+				triplet_contribution = triplet_semihard_loss(K.argmax(y_true, axis=1), embeddings)
 				classification_contribution = categorical_crossentropy(y_true, y_pred)
 				return triplet_contribution + classification_contribution
 
@@ -279,33 +295,30 @@ class TripletRPPG(GenericArchitecture):
 		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
 		input_ppg = Input(shape=(input_dim, 1), name='input_ppg')
 		
-		rgb_branch = Conv1D(64, kernel_size=5,
-								strides=2,
-								activation='relu')(input_rgb)
+		def ConvWithBN(input_layer, filters):
+			x = Conv1D(filters, kernel_size=5, strides=2, activation='linear')(input_layer)
+			x = BatchNormalization()(x)
+			return Activation('relu')(x)
 
-		rgb_branch = Conv1D(128, kernel_size=5,
-								strides=2,
-								activation='relu')(rgb_branch)
-		
-		ppg_branch = Conv1D(64, kernel_size=5,
-								strides=2,
-								activation='relu')(input_ppg)
+		rgb_branch = ConvWithBN(input_rgb, 64)
+		rgb_branch = ConvWithBN(rgb_branch, 128)
 
-		ppg_branch = Conv1D(128, kernel_size=5,
-								strides=2,
-								activation='relu')(ppg_branch)
+		ppg_branch = ConvWithBN(input_ppg, 64)
+		ppg_branch = ConvWithBN(ppg_branch, 128)
 
 		rgb_branch = GlobalAveragePooling1D()(rgb_branch)
 		ppg_branch = GlobalAveragePooling1D()(ppg_branch)
 
 		combined_branch = Concatenate()([rgb_branch, ppg_branch])
-		classification = Dense(2, activation='softmax')(combined_branch)
+		embeddings = Lambda(lambda x : K.l2_normalize(x, axis=1))(combined_branch)
+
+		classification = Dense(2, activation='softmax')(embeddings)
 		
 		def triplet_loss(margin=1.0):
 			triplet_semihard_loss = tf.contrib.losses.metric_learning.triplet_semihard_loss
 			def __triplet_loss(y_true, y_pred):
 				from keras.losses import categorical_crossentropy
-				triplet_contribution = triplet_semihard_loss(K.argmax(y_true, axis=1), y_pred)
+				triplet_contribution = triplet_semihard_loss(K.argmax(y_true, axis=1), embeddings)
 				classification_contribution = categorical_crossentropy(y_true, y_pred)
 				return triplet_contribution + classification_contribution
 
