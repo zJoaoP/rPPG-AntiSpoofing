@@ -11,6 +11,12 @@ from keras.models import Model
 
 
 class GenericArchitecture:
+	def __init__(self, dimension, lr=1e-4, verbose=False):
+		self.learning_rate = lr
+		self.verbose = verbose
+
+		self.model = self.build_model(input_shape=(dimension, 3))
+
 	def fit(self, **kwargs):
 		kwargs['verbose'] = self.verbose
 		self.model.fit(**kwargs)
@@ -27,12 +33,6 @@ class GenericArchitecture:
 
 
 class FlatRGB(GenericArchitecture):
-	def __init__(self, frame_rate, time=15, lr=1e-4, verbose=False):
-		self.learning_rate = lr
-		self.verbose = verbose
-
-		self.model = self.build_model(input_shape=(frame_rate * time, 3))
-
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
 		x = Flatten()(input_layer)
@@ -54,12 +54,6 @@ class FlatRGB(GenericArchitecture):
 
 
 class SimpleConvolutionalRGB(GenericArchitecture):
-	def __init__(self, frame_rate, time=15, lr=1e-4, verbose=False):
-		self.learning_rate = lr
-		self.verbose = verbose
-
-		self.model = self.build_model(input_shape=(frame_rate * time, 3))
-
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
 		
@@ -86,12 +80,6 @@ class SimpleConvolutionalRGB(GenericArchitecture):
 
 
 class DeepConvolutionalRGB(GenericArchitecture):
-	def __init__(self, frame_rate, time=15, lr=1e-4, verbose=False):
-		self.learning_rate = lr
-		self.verbose = verbose
-
-		self.model = self.build_model(input_shape=(frame_rate * time, 3))
-
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
 		x = Conv1D(64, kernel_size=5, strides=2, activation='linear')(input_layer)
@@ -121,11 +109,11 @@ class DeepConvolutionalRGB(GenericArchitecture):
 
 
 class FlatRPPG(GenericArchitecture):
-	def __init__(self, frame_rate, time=15, lr=1e-4, verbose=False):
+	def __init__(self, dimension, lr=1e-4, verbose=False):
 		self.learning_rate = lr
 		self.verbose = verbose
 
-		self.model = self.build_model(input_dim=frame_rate * time)
+		self.model = self.build_model(input_dim=dimension)
 
 	def build_model(self, input_dim):
 		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
@@ -152,11 +140,11 @@ class FlatRPPG(GenericArchitecture):
 		return True
 
 class SimpleConvolutionalRPPG(GenericArchitecture):
-	def __init__(self, frame_rate, time=15, lr=1e-4, verbose=False):
+	def __init__(self, dimension, lr=1e-4, verbose=False):
 		self.learning_rate = lr
 		self.verbose = verbose
 
-		self.model = self.build_model(input_dim=frame_rate * time)
+		self.model = self.build_model(input_dim=dimension)
 
 	def build_model(self, input_dim):
 		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
@@ -196,11 +184,11 @@ class SimpleConvolutionalRPPG(GenericArchitecture):
 
 
 class DeepConvolutionalRPPG(GenericArchitecture):
-	def __init__(self, frame_rate, time=15, lr=1e-4, verbose=False):
+	def __init__(self, dimension, lr=1e-4, verbose=False):
 		self.learning_rate = lr
 		self.verbose = verbose
 
-		self.model = self.build_model(input_dim=frame_rate * time)
+		self.model = self.build_model(input_dim=dimension)
 
 	def build_model(self, input_dim):
 		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
@@ -239,12 +227,6 @@ class DeepConvolutionalRPPG(GenericArchitecture):
 
 
 class TripletRGB(GenericArchitecture):
-	def __init__(self, frame_rate, time=15, lr=1e-4, verbose=False):
-		self.learning_rate = lr
-		self.verbose = verbose
-
-		self.model = self.build_model(input_shape=(frame_rate * time, 3))
-
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
 		embeddings = Conv1D(64, kernel_size=5, strides=2, activation='linear')(input_layer)
@@ -285,11 +267,11 @@ class TripletRGB(GenericArchitecture):
 
 
 class TripletRPPG(GenericArchitecture):
-	def __init__(self, frame_rate, time=15, lr=1e-4, verbose=False):
+	def __init__(self, dimension, lr=1e-4, verbose=False):
 		self.learning_rate = lr
 		self.verbose = verbose
 
-		self.model = self.build_model(input_dim=frame_rate * time)
+		self.model = self.build_model(input_dim=dimension)
 
 	def build_model(self, input_dim):
 		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
