@@ -90,55 +90,75 @@ if __name__ == "__main__":
 
 
 		shuffle(train_x, train_rppg_x, train_y)
+	elif args.prefix == 'oulu':
+		def load_split(split):
+			rppg = np.load('{0}/oulu_{1}_rppg_x.npy'.format(args.source, split))
+			x = np.load('{0}/oulu_{1}_x.npy'.format(args.source, split))
+			y = np.load('{0}/oulu_{1}_y.npy'.format(args.source, split))
 
-		from model.structures import SimpleConvolutionalRPPG
-		from model.structures import SimpleConvolutionalRGB
-		from model.structures import DeepConvolutionalRPPG
-		from model.structures import DeepConvolutionalRGB
-		from model.structures import TripletRPPG
-		from model.structures import TripletRGB
-		from model.structures import FlatRPPG
-		from model.structures import FlatRGB
-		architectures = [TripletRGB,
-						 TripletRPPG,
-						 SimpleConvolutionalRGB,
-						 SimpleConvolutionalRPPG,
-						 DeepConvolutionalRGB,
-						 DeepConvolutionalRPPG,
-						 FlatRGB,
-						 FlatRPPG]
+			y = to_categorical(y, 2)
 
-		frame_rate = 30
-		batch_size = 16
-		verbose = False
-		epochs = 1000
-		time = train_x.shape[1] // frame_rate
-		for arch in architectures:
-			arch_model = arch(time=time, frame_rate=30, lr=1e-4, verbose=verbose)
-			arch_name = type(arch_model).__name__
+			def normalize(data):
+				return (data - data.mean()) / data.std()
 
-			model_dest = "./model/models/{0}.ckpt".format(arch_name)
-			model_ckpt = ModelCheckpoint(model_dest, monitor='val_ACER',
-													 save_best_only=True,
-													 verbose=verbose)
-			early_stopping = EarlyStopping(monitor='val_ACER', patience=100)
-			callbacks = [model_ckpt, early_stopping]
-			if not arch_model.uses_rppg():
-				arch_model.fit(x=train_x, y=train_y,
-										  epochs=epochs,
-										  batch_size=batch_size,
-										  validation_split=0.25,
-										  callbacks=callbacks)
+			rppg = normalize(rppg)
+			x = normalize(x)
 
-				print(arch_model.evaluate(test_x, test_y))
-			else:
-				arch_model.fit(x=[train_x, train_rppg_x], y=train_y,
-														  epochs=epochs,
-														  batch_size=batch_size,
-														  validation_split=0.25,
-														  callbacks=callbacks)
+			return x, rppg, y
 
-				print(arch_model.evaluate([test_x, test_rppg_x], test_y))
+		train_x, train_rppg_x, train_y = load_split('train')
+		devel_x, devel_rppg_x, devel_y = load_split('devel')
+		test_x, test_rppg_x, test_y = load_split('test')
 
-			model = arch_model.get_model()
-			plot_model(model, to_file='./model/models/images/{0}.png'.format(arch_name))
+	from model.structures import SimpleConvolutionalRPPG
+	from model.structures import SimpleConvolutionalRGB
+	from model.structures import DeepConvolutionalRPPG
+	from model.structures import DeepConvolutionalRGB
+	from model.structures import TripletRPPG
+	from model.structures import TripletRGB
+	from model.structures import FlatRPPG
+	from model.structures import FlatRGB
+	architectures = [TripletRGB,
+					 TripletRPPG,
+					 SimpleConvolutionalRGB,
+					 SimpleConvolutionalRPPG,
+					 DeepConvolutionalRGB,
+					 DeepConvolutionalRPPG,
+					 FlatRGB,
+					 FlatRPPG]
+
+	batch_size = 16
+	verbose = False
+	epochs = 50000
+
+	for arch in architectures:
+		arch_model = arch(dimension=train_x.shape[1], lr=1e-4, verbose=verbose)
+		arch_name = type(arch_model).__name__
+
+		model_dest = "./model/models/{0}.ckpt".format(arch_name)
+		model_ckpt = ModelCheckpoint(model_dest, monitor='val_ACER',
+												 save_best_only=True,
+												 verbose=verbose)
+		early_stopping = EarlyStopping(monitor='val_ACER', patience=1000)
+		callbacks = [model_ckpt, early_stopping]
+		if not arch_model.uses_rppg():
+			validation = None if train_x is None else (devel_x, devel_y)
+			arch_model.fit(x=train_x, y=train_y,
+									  epochs=epochs,
+									  batch_size=batch_size,
+									  validation_data=validation,
+									  callbacks=callbacks)
+
+			print(arch_model.evaluate(test_x, test_y))
+		else:
+			validation = None if train_x is None else ([devel_x, devel_rppg_x], devel_y)
+			arch_model.fit(x=[train_x, train_rppg_x], y=train_y,
+													  epochs=epochs,
+													  batch_size=batch_size,
+													  validation_data=validation,
+													  callbacks=callbacks)
+
+			print(arch_model.evaluate([test_x, test_rppg_x], test_y))
+
+		model = arch_model.get_model()
+		plot_model(model, to_file='./model/models/images/{0}.png'.format(arch_name))
