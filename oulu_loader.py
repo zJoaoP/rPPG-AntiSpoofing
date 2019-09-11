@@ -43,12 +43,49 @@ def get_args():
 
 	parser.add_argument("source", default=None, action="store")
 	parser.add_argument("dest", default=None, action="store")
-	parser.add_argument("time", default=5, action="store", type=int)
-	# parser.add_argument("protocol", default=1, action="store", type=int)
+	# parser.add_argument("time", default=5, action="store", type=int)
+	parser.add_argument("protocol", default=1, action="store", type=int)
 	return parser.parse_args()
 
 
 if __name__ == '__main__':
 	args = get_args()
+	frame_rate = 30
 	if 'oulu_train_full.npy' not in os.listdir(args.dest):
-			OuluLoader.load_and_store(args.source, args.dest)
+		OuluLoader.load_and_store(args.source, args.dest)
+
+	oulu_train_full = np.load('{0}/oulu_train_full.npy'.format(args.dest))
+	oulu_devel_full = np.load('{0}/oulu_devel_full.npy'.format(args.dest))
+	oulu_test_full = np.load('{0}/oulu_test_full.npy'.format(args.dest))
+
+	def get_hints(split_file):
+		hints = list()
+		with open(split_file) as f:
+			for line in f:
+				hints.append([int(i) for i in line.split('.')[0].split('_')])
+
+		return hints
+
+	if args.protocol == 1:
+		def load_by_session(split, sessions):
+			hints = get_hints('{0}/oulu_{1}_names.txt'.format(args.dest, split))
+			x = np.load('{0}/oulu_{1}_full.npy'.format(args.dest, split))
+			session_x, session_y = list(), list()
+			for i in range(len(x)):
+				if hints[i][1] in sessions:
+					label = 1 if (hints[i][3] == 1) else 0
+					session_x.append(x[i])
+					session_y.append(label)
+			
+			session_x, session_y = np.array(session_x), np.array(session_y)
+			split_rppg_x = get_rppg_data(session_x, frame_rate=frame_rate)
+
+			np.save('{0}/oulu_{1}_x.npy'.format(args.dest, split), session_x)
+			np.save('{0}/oulu_{1}_y.npy'.format(args.dest, split), session_y)
+			np.save('{0}/oulu_{1}_rppg_x.npy'.format(args.dest, split), split_rppg_x)
+
+			print(session_x.shape)
+
+		load_by_session('train', [1, 2])
+		load_by_session('devel', [1, 2])
+		load_by_session('test', [3])
