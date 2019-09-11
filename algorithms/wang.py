@@ -18,9 +18,9 @@ class Wang(DefaultStrategy):
 		signal = np.zeros(len(temporal_means), dtype=np.float32)
 		num_frames = len(temporal_means)
 
-		for i in range(3):
-			temporal_means[:, i] -= np.mean(temporal_means[:, i])
-			temporal_means[:, i] = DefaultStrategy.detrend(temporal_means[:, i])
+		# for i in range(3):
+		# 	temporal_means[:, i] -= np.mean(temporal_means[:, i])
+		# 	temporal_means[:, i] = DefaultStrategy.detrend(temporal_means[:, i])
 
 		for n in range(len(temporal_means)):
 			Cn = temporal_means
@@ -42,4 +42,4 @@ class Wang(DefaultStrategy):
 												max_freq=4.0, 
 												order=get_order(len(signal)))
 		
-		return signal
+		return (signal - signal.mean()) / signal.std()
