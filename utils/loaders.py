@@ -62,6 +62,22 @@ class AsyncVideoLoader:
 		self.capture.release()
 
 
+class OpenCV_Wrapper:
+	def __init__(self, source):
+		self.stream = cv2.VideoCapture(source)
+
+	def read(self):
+		success, frame = self.stream.read()
+		if not success:
+			return False, None
+		else:
+			return success, frame
+
+	def lenght(self):
+		frame_count = int(self.stream.get(cv2.CAP_PROP_FPS))
+		return frame_count if frame_count > 0 else (1 << 27)
+
+
 """
 Class dedicated to load videos and crop from desired location \
 using the AsyncLoader defined previously and cropping the region of interest.
@@ -113,7 +129,7 @@ class VideoLoader:
 
 			return np.array(annotations)
 
-		loader = AsyncVideoLoader(source=source).start()
+		loader = OpenCV_Wrapper(source=source)
 		predictor = LandmarkPredictor()
 		extractor = CheeksAndNose()
 		if annotation is not None:
@@ -122,6 +138,8 @@ class VideoLoader:
 		features = np.zeros([loader.lenght(), 3], dtype=np.float32)
 		for i in range(loader.lenght()):
 			success, frame = loader.read()
+			if not success:
+				break
 			def valid_annotation(annotations, current_index):
 				if len(annotations) < current_index:
 					return False
@@ -246,7 +264,9 @@ def slice_and_stride(data, size, stride):
 	return data_slice
 
 from algorithms.wang import Wang
+from copy import deepcopy
 def get_rppg_data(data, frame_rate=25):
+	data = deepcopy(data)
 	final_data = None
 	nan_locations = np.isnan(data)
 	data[nan_locations] = 0.0
