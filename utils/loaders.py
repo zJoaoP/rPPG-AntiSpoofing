@@ -180,7 +180,6 @@ class VideoLoader:
 				if np.any(np.isnan(features[i])):
 					features[i] = features[i - 1] if i > 0 else 0.0
 
-		loader.stop()
 		print("[DataLoader] Features extracted from '{0}'.".format(source))
 		return features
 
