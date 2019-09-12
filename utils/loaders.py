@@ -74,7 +74,7 @@ class OpenCV_Wrapper:
 			return success, frame
 
 	def lenght(self):
-		frame_count = int(self.stream.get(cv2.CAP_PROP_FPS))
+		frame_count = int(self.stream.get(cv2.CAP_PROP_FRAME_COUNT))
 		return frame_count if frame_count > 0 else (1 << 27)
 
 
