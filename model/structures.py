@@ -3,9 +3,9 @@ import tensorflow as tf
 
 
 from keras.layers import Input, Flatten, Conv1D, GlobalAveragePooling1D
-from keras.layers import BatchNormalization, Activation
+from keras.layers import BatchNormalization, Activation, MaxPooling1D
+from model.metrics import APCER, BPCER, ACER, AUC_ROC
 from keras.layers import Concatenate, Lambda, Dense
-from model.metrics import APCER, BPCER, ACER
 from keras.optimizers import Adam
 from keras.models import Model
 
@@ -22,11 +22,8 @@ class GenericArchitecture:
 		self.model.fit(**kwargs)
 
 	def evaluate(self, x, y):
-		arch_name = type(self).__name__
 		evaluation = self.model.evaluate(x, y, verbose=self.verbose)
-		results = dict(zip(self.model.metrics_names, evaluation))
-		str_representation = "{0} : {1}".format(arch_name, results)
-		return str_representation
+		return dict(zip(self.model.metrics_names, evaluation))
 
 	def get_model(self):
 		return self.model
@@ -42,7 +39,7 @@ class FlatRGB(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
 		)
 		if self.verbose:
 			model.summary()
@@ -57,9 +54,66 @@ class SimpleConvolutionalRGB(GenericArchitecture):
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
 		
-		x = Conv1D(64, kernel_size=5, strides=1, activation='linear')(input_layer)
+		x = Conv1D(64, kernel_size=5, strides=1, activation='linear', use_bias=False)(input_layer)
 		x = BatchNormalization()(x)
 		x = Activation('relu')(x)
+		x = MaxPooling1D(pool_size=3, strides=2)(x)
+
+		x = GlobalAveragePooling1D()(x)
+
+		x = Dense(2, activation='softmax')(x)
+
+		model = Model(input_layer, x)
+		model.compile(
+			optimizer=Adam(lr=self.learning_rate),
+			loss='categorical_crossentropy',
+			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+		)
+		if self.verbose:
+			model.summary()
+
+		return model
+
+	def uses_rppg(self):
+		return False
+
+class SimpleResnetRGB(GenericArchitecture):
+	def build_model(self, input_shape):
+		from keras.layers import Add
+
+		input_layer = Input(shape=input_shape)
+
+		def resnet_identity_block(input_layer, filters):
+			x = Conv1D(filters, kernel_size=5, strides=1, padding='same', activation='relu')(input_layer)
+			x = Conv1D(filters, kernel_size=5, strides=1, padding='same', activation='linear')(x)
+			x = Add()([x, input_layer])
+			return Activation('relu')(x)
+
+		def resnet_residual_block(input_layer, filters):
+			x = Conv1D(filters, kernel_size=5, strides=2, activation='relu')(input_layer)
+			x = Conv1D(filters, kernel_size=5, strides=1, padding='same', activation='linear')(x)
+		
+			input_layer = Conv1D(filters, kernel_size=5, strides=2, activation='linear')(input_layer)
+			
+			x = Add()([x, input_layer])
+			return Activation('relu')(x)
+		
+		x = Conv1D(64, kernel_size=5, strides=2, activation='relu')(input_layer)
+
+		for i in range(3):
+			x = resnet_identity_block(x, 64)
+		
+		x = resnet_residual_block(x, 128)
+		for i in range(3):
+			x = resnet_identity_block(x, 128)
+
+		x = resnet_residual_block(x, 256)
+		for i in range(5):
+			x = resnet_identity_block(x, 256)
+
+		x = resnet_residual_block(x, 512)
+		for i in range(2):
+			x = resnet_identity_block(x, 512)
 
 		x = GlobalAveragePooling1D()(x)
 		x = Dense(2, activation='softmax')(x)
@@ -68,7 +122,7 @@ class SimpleConvolutionalRGB(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
 		)
 		if self.verbose:
 			model.summary()
@@ -82,22 +136,25 @@ class SimpleConvolutionalRGB(GenericArchitecture):
 class DeepConvolutionalRGB(GenericArchitecture):
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
-		x = Conv1D(64, kernel_size=5, strides=2, activation='linear')(input_layer)
+		x = Conv1D(64, kernel_size=5, strides=1, activation='linear', use_bias=False)(input_layer)
 		x = BatchNormalization()(x)
 		x = Activation('relu')(x)
+		x = MaxPooling1D(pool_size=3, strides=2)(x)
 
-		x = Conv1D(128, kernel_size=5, strides=2, activation='linear')(x)
+		x = Conv1D(128, kernel_size=5, strides=1, activation='linear', use_bias=False)(x)
 		x = BatchNormalization()(x)
 		x = Activation('relu')(x)
+		x = MaxPooling1D(pool_size=3, strides=2)(x)
 
 		x = GlobalAveragePooling1D()(x)
+
 		x = Dense(2, activation='softmax')(x)
 
 		model = Model(input_layer, x)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
 		)
 		if self.verbose:
 			model.summary()
@@ -129,7 +186,7 @@ class FlatRPPG(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
 		)
 		if self.verbose:
 			model.summary()
@@ -152,13 +209,17 @@ class SimpleConvolutionalRPPG(GenericArchitecture):
 		
 		rgb_branch = Conv1D(64, kernel_size=5,
 								strides=1,
-								activation='linear')(input_rgb)
+								activation='linear',
+								use_bias=False)(input_rgb)
+
 		rgb_branch = BatchNormalization()(rgb_branch)
 		rgb_branch = Activation('relu')(rgb_branch)
 		
 		ppg_branch = Conv1D(64, kernel_size=5,
 								strides=1,
-								activation='linear')(input_ppg)
+								activation='linear',
+								use_bias=False)(input_ppg)
+
 		ppg_branch = BatchNormalization()(ppg_branch)
 		ppg_branch = Activation('relu')(ppg_branch)
 
@@ -172,7 +233,7 @@ class SimpleConvolutionalRPPG(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
 		)
 		if self.verbose:
 			model.summary()
@@ -195,7 +256,7 @@ class DeepConvolutionalRPPG(GenericArchitecture):
 		input_ppg = Input(shape=(input_dim, 1), name='input_ppg')
 
 		def ConvWithBN(input_layer, filters):
-			x = Conv1D(filters, kernel_size=5, strides=2, activation='linear')(input_layer)
+			x = Conv1D(filters, kernel_size=5, strides=2, activation='linear', use_bias=False)(input_layer)
 			x = BatchNormalization()(x)
 			return Activation('relu')(x)
 
@@ -215,7 +276,7 @@ class DeepConvolutionalRPPG(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
 		)
 		if self.verbose:
 			model.summary()
@@ -229,11 +290,11 @@ class DeepConvolutionalRPPG(GenericArchitecture):
 class TripletRGB(GenericArchitecture):
 	def build_model(self, input_shape):
 		input_layer = Input(shape=input_shape)
-		embeddings = Conv1D(64, kernel_size=5, strides=2, activation='linear')(input_layer)
+		embeddings = Conv1D(64, kernel_size=5, strides=2, activation='linear', use_bias=False)(input_layer)
 		embeddings = BatchNormalization()(embeddings)
 		embeddings = Activation('relu')(embeddings)
 
-		embeddings = Conv1D(128, kernel_size=5, strides=2, activation='linear')(embeddings)
+		embeddings = Conv1D(128, kernel_size=5, strides=2, activation='linear', use_bias=False)(embeddings)
 		embeddings = BatchNormalization()(embeddings)
 		embeddings = Activation('relu')(embeddings)
 
@@ -255,7 +316,7 @@ class TripletRGB(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss=triplet_loss(margin=1.0),
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
 		)
 		if self.verbose:
 			model.summary()
@@ -278,9 +339,10 @@ class TripletRPPG(GenericArchitecture):
 		input_ppg = Input(shape=(input_dim, 1), name='input_ppg')
 		
 		def ConvWithBN(input_layer, filters):
-			x = Conv1D(filters, kernel_size=5, strides=2, activation='linear')(input_layer)
+			x = Conv1D(filters, kernel_size=5, strides=1, activation='linear', use_bias=False)(input_layer)
 			x = BatchNormalization()(x)
-			return Activation('relu')(x)
+			x = Activation('relu')(x)
+			return MaxPooling1D(pool_size=3, strides=2)(x)
 
 		rgb_branch = ConvWithBN(input_rgb, 64)
 		rgb_branch = ConvWithBN(rgb_branch, 128)
@@ -310,7 +372,7 @@ class TripletRPPG(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss=triplet_loss(margin=1.0),
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
 		)
 		if self.verbose:
 			model.summary()
