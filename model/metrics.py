@@ -40,3 +40,9 @@ def ACER(y_true, y_pred):
 	bpcer = BPCER(y_true, y_pred)
 
 	return (apcer + bpcer) / 2
+
+# define roc_callback, inspired by https://github.com/keras-team/keras/issues/6050#issuecomment-329996505
+def AUC_ROC(y_true, y_pred):
+	auc = tf.metrics.auc(y_true, y_pred)[1]
+	K.get_session().run(tf.local_variables_initializer())
+	return auc
