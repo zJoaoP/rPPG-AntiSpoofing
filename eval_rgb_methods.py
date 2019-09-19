@@ -9,6 +9,7 @@ from utils.wrappers import OpenCV_Wrapper, Kinect_Wrapper
 from algorithms.de_haan import DeHaan
 from algorithms.green import Green
 from algorithms.wang import Wang
+from algorithms.pbv import PBV
 
 from utils.loaders import AsyncVideoLoader
 
@@ -57,22 +58,18 @@ if __name__ == "__main__":
 			bgr_rect = bgr_predictor.detect_face(image = bgr)
 			if bgr_rect is not None:
 				bgr_left, bgr_right, bgr_top, bgr_bottom = bgr_rect.left(), bgr_rect.right(), bgr_rect.top(), bgr_rect.bottom()
-				cut_bgr = bgr[bgr_top : bgr_bottom, bgr_left : bgr_right, :]
+				cut_bgr = bgr[bgr_top : bgr_bottom, bgr_left : bgr_right]
 
 				bgr_landmarks = bgr_predictor.detect_landmarks(image = cut_bgr)
 				cut_bgr = extractor.extract_roi(cut_bgr, bgr_landmarks).astype(np.float32)
-				# for strategy in strategies:
-				# 	strategy.process(cut_bgr, bgr_landmarks)
-
-				cv2.imshow('WOW', cut_bgr.astype(np.uint8))
 
 				cut_bgr[cut_bgr == 0.0] = np.nan
-				r, g, b = np.nanmean(cut_bgr, axis=(0, 1))
+				b, g, r = np.nanmean(cut_bgr, axis=(0, 1))
 				features = np.array([[r, g, b]])
 				if temporal_means is None:
-					temporal_means = np.array([[r, g, b]])
+					temporal_means = features
 				else:
-					temporal_means = np.append(temporal_means, np.array([[r, g, b]]), axis=0)
+					temporal_means = np.append(temporal_means, features, axis=0)
 
 				# for x, y in bgr_landmarks:
 				# 	cv2.circle(cut_bgr, (x, y), 1, (0, 255, 0))
@@ -81,18 +78,25 @@ if __name__ == "__main__":
 
 				frame_count += 1
 
-				print("[rPPG Tracker] {0}/{1} frames processados.".format(frame_count, frame_limit))
+				print("[rPPG Tracker] {0}/{1} frames processados.".format(frame_count, loader.lenght()))
 			else:
 				frames_to_skip = args.skip_count	
 
-	# print(temporal_means.shape)
+	from algorithms.default import DefaultStrategy
+
 	signal = Wang.extract_rppg(temporal_means)
-	fig, (means, rppg) = plt.subplots(2)
-	means.plot(temporal_means)
+	fig, (means, rppg, fft) = plt.subplots(3)
+
+	means.plot(temporal_means.T[0], 'r')
+	means.plot(temporal_means.T[1], 'g')
+	means.plot(temporal_means.T[2], 'b')
 	rppg.plot(signal)
+	
+	x, y = DefaultStrategy.get_fft(signal)
+	fft.plot(x, y)
 
 	plt.show()
 
-	print(temporal_means.mean())
-	print(temporal_means.max())
-	print(temporal_means.min())
+	# print(temporal_means.mean())
+	# print(temporal_means.max())
+	# print(temporal_means.min())
