@@ -140,6 +140,7 @@ class VideoLoader:
 			success, frame = loader.read()
 			if not success:
 				break
+			
 			def valid_annotation(annotations, current_index):
 				if len(annotations) < current_index:
 					return False
@@ -176,7 +177,8 @@ class VideoLoader:
 				frame = extractor.extract_roi(frame, landmarks).astype(np.float32)
 
 				frame[frame == 0.0] = np.nan
-				features[i] = np.nanmean(frame, axis=(0, 1))
+				b, g, r = np.nanmean(frame, axis=(0, 1))
+				features[i] = np.array([[r, g, b]])
 				if np.any(np.isnan(features[i])):
 					features[i] = features[i - 1] if i > 0 else 0.0
 
@@ -263,6 +265,7 @@ def slice_and_stride(data, size, stride):
 	return data_slice
 
 from algorithms.wang import Wang
+from algorithms.pbv import PBV
 from copy import deepcopy
 def get_rppg_data(data, frame_rate=25):
 	data = deepcopy(data)
@@ -277,9 +280,7 @@ def get_rppg_data(data, frame_rate=25):
 		final_data[i] = current_rppg.reshape(current_rppg.shape[0], 1)
 
 		if (i > 0) and (i % 256 == 0):
-			print("[Wang] {0} / {1} rPPG features processed.".format(i,
+			print("[WANG] {0} / {1} rPPG features processed.".format(i,
 																	 len(data)))
-
-	print(final_data.shape)
 	return final_data
 	
