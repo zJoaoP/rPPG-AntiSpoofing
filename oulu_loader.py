@@ -43,7 +43,6 @@ def get_args():
 
 	parser.add_argument("source", default=None, action="store")
 	parser.add_argument("dest", default=None, action="store")
-	# parser.add_argument("time", default=5, action="store", type=int)
 	parser.add_argument("protocol", default=1, action="store", type=int)
 	return parser.parse_args()
 
@@ -78,6 +77,7 @@ if __name__ == '__main__':
 					session_y.append(label)
 			
 			session_x, session_y = np.array(session_x), np.array(session_y)
+
 			split_rppg_x = get_rppg_data(session_x, frame_rate=frame_rate)
 
 			np.save('{0}/oulu_{1}_x.npy'.format(args.dest, split), session_x)
