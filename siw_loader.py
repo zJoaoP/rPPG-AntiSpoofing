@@ -73,7 +73,23 @@ if __name__ == "__main__":
 
 	frame_rate = 30
 	video_size = frame_rate * args.time
-	if args.protocol == 1:
+	if args.protocol == 0:
+		def load_all_data(split):
+			live = np.load('{0}/siw_{1}_live.npy'.format(args.dest, split))
+			spoof = np.load('{0}/siw_{1}_spoof.npy'.format(args.dest, split))
+			
+			live = live[:, :video_size]
+			spoof = spoof[:, :video_size]
+
+			part = np.append(spoof, live, axis=0)
+			labels = np.append(np.zeros(len(spoof)), np.ones(len(live)))
+
+			np.save('{0}/siw_{1}_x.npy'.format(args.dest, split), part)
+			np.save('{0}/siw_{1}_y.npy'.format(args.dest, split), labels)
+
+		load_all_data('train')
+		load_all_data('test')
+	elif args.protocol == 1:
 		def load_first_protocol(name):
 			live = np.load('{0}/siw_{1}_live.npy'.format(args.dest, name))
 			spoof = np.load('{0}/siw_{1}_spoof.npy'.format(args.dest, name))
@@ -90,7 +106,7 @@ if __name__ == "__main__":
 		load_first_protocol('train')
 		load_first_protocol('test')
 	elif args.protocol == 2: # Apply data augmentation.
-		leave_out_medium = 4
+		leave_out_medium = 3
 		def load_second_protocol(part):
 			def is_valid_insertion(hint):
 				label = 1 if hint[2] == 1 else 0
@@ -140,7 +156,7 @@ if __name__ == "__main__":
 		np.save('{0}/siw_test_y.npy'.format(args.dest), np.array(test_y))
 
 	elif args.protocol == 3:
-		train_with_print = True
+		train_with_print = False
 		test_with_print = not train_with_print
 		def load_third_protocol(part):
 			def is_valid_insertion(hint):
