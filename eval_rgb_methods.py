@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
 	frame_count, frame_limit = 0, args.time * frame_rate
 	temporal_means = None
-	while frame_count < loader.lenght():
+	while (frame_count < loader.lenght()) and (frame_count < int(args.time * frame_rate)):
 		(success, bgr, nir) = wrapper.get_frame()
 		if not success or cv2.waitKey(1) & 0xFF == ord('q'):
 			break
@@ -84,16 +84,41 @@ if __name__ == "__main__":
 
 	from algorithms.default import DefaultStrategy
 
-	signal = Wang.extract_rppg(temporal_means)
-	fig, (means, rppg, fft) = plt.subplots(3)
+	wang_signal = Wang.extract_rppg(temporal_means.copy(), frame_rate)
+	pbv_signal = PBV.extract_rppg(temporal_means.copy(), frame_rate)
+	chrom_signal = DeHaan.extract_rppg(temporal_means.copy(), frame_rate)
+
+	plt.figure(0)
+	_, (means, wang_plot, pbv_plot, chrom_plot) = plt.subplots(4)
 
 	means.plot(temporal_means.T[0], 'r')
 	means.plot(temporal_means.T[1], 'g')
 	means.plot(temporal_means.T[2], 'b')
-	rppg.plot(signal)
 	
-	x, y = DefaultStrategy.get_fft(signal)
-	fft.plot(x, y)
+	wang_plot.set_title("Wang Signal")
+	wang_plot.plot(wang_signal)
+
+	pbv_plot.set_title("PBV Signal")
+	pbv_plot.plot(pbv_signal)
+
+	chrom_plot.set_title("CHROM Signal")
+	chrom_plot.plot(chrom_signal)
+
+	plt.figure(1)
+	_, (wang_fft_plot, pbv_fft_plot, chrom_fft_plot) = plt.subplots(3)
+
+	x_wang_fft, y_wang_fft = DefaultStrategy.get_fft(wang_signal, frame_rate)
+	x_pbv_fft, y_pbv_fft = DefaultStrategy.get_fft(pbv_signal, frame_rate)
+	x_chrom_fft, y_chrom_fft = DefaultStrategy.get_fft(chrom_signal, frame_rate)
+
+	wang_fft_plot.set_title("Wang Signal FFT: {0} BPM".format(int(x_wang_fft[y_wang_fft.argmax()] * 60.0)))
+	wang_fft_plot.plot(x_wang_fft, y_wang_fft)
+
+	pbv_fft_plot.set_title("PBV Signal FFT: {0} BPM".format(int(x_pbv_fft[y_pbv_fft.argmax()] * 60.0)))
+	pbv_fft_plot.plot(x_pbv_fft, y_pbv_fft)
+
+	chrom_fft_plot.set_title("CHROM Signal FFT: {0} BPM".format(int(x_chrom_fft[y_chrom_fft.argmax()] * 60.0)))
+	chrom_fft_plot.plot(x_chrom_fft, y_chrom_fft)
 
 	plt.show()
 
