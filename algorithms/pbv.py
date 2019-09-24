@@ -19,8 +19,9 @@ class PBV(DefaultStrategy):
 					break
 
 				c_window = c[j:j+window_size]
-				if c_window.mean() != 0:
-					c_window = (c_window / c_window.mean()) - 1.0
+				# if c_window.mean() != 0:
+				c_window = (c_window / c_window.mean()) - 1.0
+				c_window = DefaultStrategy.detrend(c_window)
 
 				c_window = DefaultStrategy.bandpass_filter(c_window,
 															frame_rate=frame_rate,
@@ -29,11 +30,6 @@ class PBV(DefaultStrategy):
 															order=get_order(len(c_window)))
 
 				c_overlap[j:j+window_size] += c_window
-			# for j in range(0, len(c), window_size // 2):
-			# 	if j + window_size > len(c):
-			# 		break
-
-			# 	c_overlap[j:j+window_size] += np.hanning(window_size) * c[j:j+window_size]
 
 			channels[i] = c_overlap
 
