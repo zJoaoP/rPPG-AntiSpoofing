@@ -65,19 +65,26 @@ def get_args():
 
 
 def slice_partition(name, size, stride, prefix='rad'):
+	from utils.loaders import get_rppg_data
+
 	split_fake = np.load("{0}/rad_{1}_fake.npy".format(args.dest, name))
 	split_real = np.load("{0}/rad_{1}_real.npy".format(args.dest, name))
 	
-	slice_split_fake = slice_and_stride(split_fake, size, stride)
-	slice_split_real = slice_and_stride(split_real, size, stride)
-	split = np.append(slice_split_fake, slice_split_real, axis=0)
+	# slice_split_fake = slice_and_stride(split_fake, size, stride)
+	# slice_split_real = slice_and_stride(split_real, size, stride)
+	split_real = split_real[:, :size]
+	split_fake = split_fake[:, :size]
+	split = np.append(split_fake, split_real, axis=0)
 	
-	labels_split_fake = np.zeros([len(slice_split_fake)])
-	labels_split_real = np.ones([len(slice_split_real)])
+	labels_split_fake = np.zeros([len(split_fake)])
+	labels_split_real = np.ones([len(split_real)])
 	labels = np.append(labels_split_fake, labels_split_real)
+
+	split_rppg = get_rppg_data(split, 30)
 	
-	np.save("{0}/{1}_{2}_x.npy".format(args.dest, prefix, name), split)
+	np.save("{0}/{1}_{2}_ppg.npy".format(args.dest, prefix, name), split_rppg)
 	np.save("{0}/{1}_{2}_y.npy".format(args.dest, prefix, name), labels)
+	np.save("{0}/{1}_{2}_x.npy".format(args.dest, prefix, name), split)
 
 
 if __name__ == "__main__":
