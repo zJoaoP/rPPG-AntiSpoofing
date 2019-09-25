@@ -16,7 +16,8 @@ class DeHaan(DefaultStrategy):
 		window_size = int(frame_rate * 1.6)
 
 		for i in range(3):
-			temporal_means[:, i] = (temporal_means[:, i] / np.mean(temporal_means[:, i])) - 1.0
+			temporal_means[:, i] = (temporal_means[:, i] / (np.mean(temporal_means[:, i]) + np.finfo(np.float32).eps)) - 1.0
+
 			temporal_means[:, i] = DefaultStrategy.detrend(temporal_means[:, i])
 			temporal_means[:, i] = DefaultStrategy.bandpass_filter(temporal_means[:, i],
 																   frame_rate=frame_rate,
