@@ -4,7 +4,7 @@ import tensorflow as tf
 
 from keras.layers import Input, Flatten, Conv1D, GlobalAveragePooling1D
 from keras.layers import BatchNormalization, Activation, MaxPooling1D
-from model.metrics import APCER, BPCER, ACER, AUC_ROC
+from model.metrics import APCER, BPCER, ACER
 from keras.layers import Concatenate, Lambda, Dense
 from keras.optimizers import Adam
 from keras.models import Model
@@ -39,7 +39,7 @@ class FlatRGB(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
 			model.summary()
@@ -67,7 +67,7 @@ class SimpleConvolutionalRGB(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
 			model.summary()
@@ -122,7 +122,7 @@ class SimpleResnetRGB(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
 			model.summary()
@@ -154,7 +154,7 @@ class DeepConvolutionalRGB(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
 			model.summary()
@@ -186,7 +186,7 @@ class FlatRPPG(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
 			model.summary()
@@ -233,7 +233,7 @@ class SimpleConvolutionalRPPG(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
 			model.summary()
@@ -276,7 +276,7 @@ class DeepConvolutionalRPPG(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
 			model.summary()
@@ -316,7 +316,7 @@ class TripletRGB(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss=triplet_loss(margin=1.0),
-			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
 			model.summary()
@@ -372,7 +372,7 @@ class TripletRPPG(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss=triplet_loss(margin=1.0),
-			metrics=['accuracy', APCER, BPCER, ACER, AUC_ROC]
+			metrics=['accuracy', APCER, BPCER, ACER]
 		)
 		if self.verbose:
 			model.summary()
