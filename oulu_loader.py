@@ -65,7 +65,27 @@ if __name__ == '__main__':
 
 		return hints
 
-	if args.protocol == 1:
+	if args.protocol == 0:
+		def load_all_data(split):
+			hints = get_hints('{0}/oulu_{1}_names.txt'.format(args.dest, split))
+			x = np.load('{0}/oulu_{1}_full.npy'.format(args.dest, split))[:, :120]
+			y = np.zeros(len(x))
+
+			for i in range(len(x)):
+				y[i] = 1 if hints[i][3] == 1 else 0
+
+			rppg = get_rppg_data(x, frame_rate=frame_rate)
+
+			np.save('{0}/oulu_{1}_rppg_x.npy'.format(args.dest, split), rppg)
+			np.save('{0}/oulu_{1}_x.npy'.format(args.dest, split), x)
+			np.save('{0}/oulu_{1}_y.npy'.format(args.dest, split), y)
+
+			print(rppg.shape)
+
+		for split in ['train', 'devel', 'test']:
+			load_all_data(split)
+
+	elif args.protocol == 1:
 		def load_by_session(split, sessions):
 			hints = get_hints('{0}/oulu_{1}_names.txt'.format(args.dest, split))
 			x = np.load('{0}/oulu_{1}_full.npy'.format(args.dest, split))
