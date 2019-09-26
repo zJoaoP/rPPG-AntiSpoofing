@@ -144,8 +144,8 @@ if __name__ == "__main__":
 					 DeepConvolutionalRPPG]
 
 	batch_size = 16
-	verbose = True
-	epochs = 10
+	verbose = False
+	epochs = 1000
 
 	eer = list()
 	for arch in architectures:
@@ -170,7 +170,7 @@ if __name__ == "__main__":
 									  callbacks=callbacks)
 
 			arch_model.get_model().load_weights(model_dest)
-
+			pred = arch_model.get_model().predict(test_x)
 			evaluation = arch_model.evaluate(test_x, test_y)
 			print("{0} : {1}".format(arch_name, evaluation))
 		else:
@@ -185,13 +185,25 @@ if __name__ == "__main__":
 			arch_model.get_model().load_weights(model_dest)
 
 			evaluation = arch_model.evaluate([test_x, test_rppg_x], test_y)
+			pred = arch_model.get_model().predict([test_x, test_rppg_x])
 			print("{0} : {1}".format(arch_name, evaluation))
 
 		# plot_model(model, to_file='./model/models/images/{0}.png'.format(arch_name))
-	# 	pred = pred[:, 1]
-	# 	from sklearn.metrics import roc_curve, auc, roc_auc_score
-	# 	import matplotlib.pyplot as plt
-	# 	fpr, tpr, threshold = roc_curve(np.argmax(train_y, axis=1), pred)
+		# pred = pred[:, 1]
+		# from sklearn.metrics import roc_curve, auc, roc_auc_score
+		# import matplotlib.pyplot as plt
+		# fpr, tpr, threshold = roc_curve(np.argmax(train_y, axis=1), pred)
+		# auc_roc = auc(fpr, tpr)
+
+		# plt.title('Receiver Operating Characteristic')
+		# plt.plot(fpr, tpr, 'b', label='AUC = {0:2f}'.format(auc_roc))
+		# plt.legend(loc='lower right')
+		# plt.plot([0, 1], [0, 1],'r--')
+		# plt.xlim([0, 1])
+		# plt.ylim([0, 1])
+		# plt.ylabel('True Positive Rate')
+		# plt.xlabel('False Positive Rate')
+		# plt.show()
 
 	# 	fnr = 1 - tpr
 	# 	eer.append(fpr[np.nanargmin(np.absolute((fnr - fpr)))])
