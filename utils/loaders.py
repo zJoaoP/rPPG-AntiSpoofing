@@ -274,14 +274,14 @@ def get_rppg_data(data, frame_rate=25):
 	nan_locations = np.isnan(data)
 	data[nan_locations] = 0.0
 	for i in range(len(data)):
-		current_rppg = DeHaan.extract_rppg(data[i], frame_rate)
+		current_rppg = Wang.extract_rppg(data[i], frame_rate)
 		if final_data is None:
 			final_data = np.empty([len(data), current_rppg.shape[0], 1])
 
 		final_data[i] = current_rppg.reshape(current_rppg.shape[0], 1)
 
 		if (i > 0) and (i % 256 == 0):
-			print("[DeHaan] {0} / {1} rPPG features processed.".format(i,
+			print("[Wang] {0} / {1} rPPG features processed.".format(i,
 																	 len(data)))
 	return final_data
 	

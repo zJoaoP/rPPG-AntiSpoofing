@@ -39,7 +39,7 @@ class OuluLoader:
 def get_args():
 	parser = argparse.ArgumentParser(description="Code writen to perform the data \
 												  extraction task from \
-												  'Spoof in the Wild' database.")
+												  'Oulu-NPU' dataset.")
 
 	parser.add_argument("source", default=None, action="store")
 	parser.add_argument("dest", default=None, action="store")

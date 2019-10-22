@@ -38,8 +38,8 @@ class FlatRGB(GenericArchitecture):
 		model = Model(input_layer, x)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
-			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
 		)
 		if self.verbose:
 			model.summary()
@@ -66,8 +66,8 @@ class SimpleConvolutionalRGB(GenericArchitecture):
 		model = Model(input_layer, x)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
-			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
 		)
 		if self.verbose:
 			model.summary()
@@ -121,8 +121,8 @@ class SimpleResnetRGB(GenericArchitecture):
 		model = Model(input_layer, x)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
-			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
 		)
 		if self.verbose:
 			model.summary()
@@ -153,8 +153,8 @@ class DeepConvolutionalRGB(GenericArchitecture):
 		model = Model(input_layer, x)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
-			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
 		)
 		if self.verbose:
 			model.summary()
@@ -185,8 +185,8 @@ class FlatRPPG(GenericArchitecture):
 		model = Model([input_rgb, input_ppg], combined_branch)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
-			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
 		)
 		if self.verbose:
 			model.summary()
@@ -232,8 +232,8 @@ class SimpleConvolutionalRPPG(GenericArchitecture):
 		model = Model([input_rgb, input_ppg], combined_branch)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
-			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
 		)
 		if self.verbose:
 			model.summary()
@@ -275,8 +275,8 @@ class DeepConvolutionalRPPG(GenericArchitecture):
 		model = Model([input_rgb, input_ppg], combined_branch)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
-			loss='categorical_crossentropy',
-			metrics=['accuracy', APCER, BPCER, ACER]
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
 		)
 		if self.verbose:
 			model.summary()
@@ -305,9 +305,9 @@ class TripletRGB(GenericArchitecture):
 		def triplet_loss(margin=1.0):
 			triplet_semihard_loss = tf.contrib.losses.metric_learning.triplet_semihard_loss
 			def __triplet_loss(y_true, y_pred):
-				from keras.losses import categorical_crossentropy
+				from keras.losses import sparse_categorical_crossentropy
 				triplet_contribution = triplet_semihard_loss(K.argmax(y_true, axis=1), embeddings)
-				classification_contribution = categorical_crossentropy(y_true, y_pred)
+				classification_contribution = sparse_categorical_crossentropy(y_true, y_pred)
 				return triplet_contribution + classification_contribution
 
 			return __triplet_loss
@@ -316,7 +316,7 @@ class TripletRGB(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss=triplet_loss(margin=1.0),
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['acc']
 		)
 		if self.verbose:
 			model.summary()
@@ -361,9 +361,9 @@ class TripletRPPG(GenericArchitecture):
 		def triplet_loss(margin=1.0):
 			triplet_semihard_loss = tf.contrib.losses.metric_learning.triplet_semihard_loss
 			def __triplet_loss(y_true, y_pred):
-				from keras.losses import categorical_crossentropy
+				from keras.losses import sparse_categorical_crossentropy
 				triplet_contribution = triplet_semihard_loss(K.argmax(y_true, axis=1), embeddings)
-				classification_contribution = categorical_crossentropy(y_true, y_pred)
+				classification_contribution = sparse_categorical_crossentropy(y_true, y_pred)
 				return triplet_contribution + classification_contribution
 
 			return __triplet_loss
@@ -372,7 +372,7 @@ class TripletRPPG(GenericArchitecture):
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss=triplet_loss(margin=1.0),
-			metrics=['accuracy', APCER, BPCER, ACER]
+			metrics=['acc']
 		)
 		if self.verbose:
 			model.summary()

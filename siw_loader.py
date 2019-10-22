@@ -106,7 +106,7 @@ if __name__ == "__main__":
 		load_first_protocol('train')
 		load_first_protocol('test')
 	elif args.protocol == 2: # Apply data augmentation.
-		leave_out_medium = 3
+		leave_out_medium = 4
 		def load_second_protocol(part):
 			def is_valid_insertion(hint):
 				label = 1 if hint[2] == 1 else 0
@@ -156,7 +156,7 @@ if __name__ == "__main__":
 		np.save('{0}/siw_test_y.npy'.format(args.dest), np.array(test_y))
 
 	elif args.protocol == 3:
-		train_with_print = False
+		train_with_print = True
 		test_with_print = not train_with_print
 		def load_third_protocol(part):
 			def is_valid_insertion(hint):

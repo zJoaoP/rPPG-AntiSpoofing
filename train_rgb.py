@@ -5,11 +5,15 @@ import cv2
 import os
 
 
+from sklearn.model_selection import train_test_split
+
+
 from keras.layers import Dense, BatchNormalization, Activation, Flatten, Lambda
 from keras.layers import Conv1D, Input, MaxPooling1D, Concatenate
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.models import Model, Sequential
 from keras.utils import to_categorical
+from keras.callbacks import Callback
 from keras.utils import plot_model
 from keras.optimizers import Adam
 
@@ -27,6 +31,72 @@ def build_parser():
 							help = "Prefixo do dataset a ser utilizado. \
 									(Padrão: %(default)s)")
 	return parser.parse_args()
+
+
+def APCER(y_true, y_pred):
+	y_pred = np.argmax(y_pred, axis=1)
+	count_fake = np.sum(1 - y_true)
+
+	false_positives = np.all([y_true == 0, y_pred == 1], axis=0)
+	false_positives = np.sum(false_positives)
+	return false_positives / count_fake
+
+
+def BPCER(y_true, y_pred):
+	y_pred = np.argmax(y_pred, axis=1)
+	count_real = np.sum(y_true)
+
+	false_negatives = np.all([y_true == 1, y_pred == 0], axis=0)
+	false_negatives = np.sum(false_negatives)
+	return false_negatives / count_real
+
+
+def ACER(apcer, bpcer):
+	return (apcer + bpcer) / 2.0
+
+
+def evaluate_on_data(y_true, y_pred):
+	apcer = APCER(y_true, y_pred)
+	bpcer = BPCER(y_true, y_pred)
+	acer = ACER(apcer, bpcer)
+
+	acc = sum(y_true == y_pred.argmax(axis=1)) / len(y_true)
+
+	return acer, "APCER={:.5f}, BPCER={:.5f}, ACER={:.5f}, ACC={}".format(apcer,
+																		  bpcer,
+																		  acer,
+																		  acc)
+
+
+class EvaluationCallback(Callback):
+	def __init__(self, destination=None, x=None, y=None, verbose=True):
+		self.destination = destination
+		self.best_acer = np.inf
+		self.verbose = verbose
+		self.epochs = 1
+
+		self.x = x
+		self.y = y
+
+	def on_epoch_end(self, batch, logs):
+		devel_x, devel_y = self.x, self.y
+		pred_y = self.model.predict(devel_x)
+
+		acer, evaluation = evaluate_on_data(devel_y, pred_y)
+
+		print("(Epoch {}) {}.".format(self.epochs, evaluation))
+		
+		self.epochs += 1
+
+		if self.best_acer > acer and self.destination is not None:
+			if self.verbose:
+				print('\n[ModelCheckpoint] ACER improved from {:.5f} to {:.5f}.'\
+					  ' Storing best weights in {}\n'.format(self.best_acer,
+															 acer,
+															 self.destination))
+			self.best_acer = acer
+
+			self.model.save_weights(self.destination)
 
 
 if __name__ == "__main__":
@@ -61,7 +131,7 @@ if __name__ == "__main__":
 				p_y = np.append(p_y, p_y)
 
 			p_x = p_x / 255.0
-			return p_x, ppg_x, to_categorical(p_y, 2)
+			return p_x, ppg_x, p_y
 
 		train_x, train_rppg_x, train_y = load_partition('train')
 		devel_x, devel_rppg_x, devel_y = load_partition('devel')
@@ -75,52 +145,37 @@ if __name__ == "__main__":
 		test_x = np.load('{0}/siw_test_x.npy'.format(args.source))
 		test_y = np.load('{0}/siw_test_y.npy'.format(args.source))
 
-		train_y = to_categorical(train_y, 2)
-		test_y = to_categorical(test_y, 2)
-
-		train_x = train_x / 255.0
-		test_x = test_x / 255.0
-
 		def solve_nan_positions(data):
 			isnan = np.isnan(data)
 			data[isnan == True] = 0.0
 			return data
 
+		train_rppg_x = solve_nan_positions(train_rppg_x)
+		test_rppg_x = solve_nan_positions(test_rppg_x)
+
 		train_x = solve_nan_positions(train_x)
 		test_x = solve_nan_positions(test_x)
 
+		train_x = train_x / 255.0
+		test_x = test_x / 255.0
+
 		shuffle(train_x, train_rppg_x, train_y)
+		train_x, devel_x, train_rppg_x, devel_rppg_x, train_y, devel_y = train_test_split(train_x, train_rppg_x, train_y, test_size=0.2)
 	elif args.prefix == 'oulu':
 		def load_split(split):
 			rppg = np.load('{0}/oulu_{1}_rppg_x.npy'.format(args.source, split))
 			x = np.load('{0}/oulu_{1}_x.npy'.format(args.source, split))
 			y = np.load('{0}/oulu_{1}_y.npy'.format(args.source, split))
 
-			y = to_categorical(y, 2)
-
-			# def normalize(data):
-			# 	return (data - data.mean()) / data.std()
-
-			# rppg = normalize(rppg)
-			# x = normalize(x)
 			x = x / 255.0
 
-			shuffle(x, rppg, y)
+			# shuffle(x, rppg, y)
 
 			return x, rppg, y
 
 		train_x, train_rppg_x, train_y = load_split('train')
 		devel_x, devel_rppg_x, devel_y = load_split('devel')
 		test_x, test_rppg_x, test_y = load_split('test')
-
-		# train_x = norm(train_x)
-		# devel_x = norm(devel_x)
-		# test_x = norm(test_x)
-
-		# train_rppg_x = norm(train_rppg_x)
-		# devel_rppg_x = norm(devel_rppg_x)
-		# test_rppg_x = norm(test_rppg_x)
-
 	elif args.prefix == "3DMAD":
 		train_rppg_x = np.load("{0}/3DMAD_train_rppg_x.npy".format(args.source))
 		train_x = np.load("{0}/3DMAD_train_x.npy".format(args.source))
@@ -144,7 +199,7 @@ if __name__ == "__main__":
 					 DeepConvolutionalRPPG]
 
 	batch_size = 16
-	verbose = False
+	verbose = True
 	epochs = 1000
 
 	eer = list()
@@ -152,62 +207,32 @@ if __name__ == "__main__":
 		arch_model = arch(dimension=train_x.shape[1], lr=1e-4, verbose=verbose)
 		arch_name = type(arch_model).__name__
 
-		model_dest = "./model/models/{0}.ckpt".format(arch_name)
-		model_ckpt = ModelCheckpoint(model_dest, monitor='val_ACER',
-												 save_best_only=True,
-												 mode='min',
-												 verbose=verbose)
-
-		early_stopping = EarlyStopping(monitor='val_ACER', mode='min', patience=300)
-		callbacks = [model_ckpt, early_stopping]
+		model_dest = "./model/models/{}_{}.ckpt".format(args.prefix, arch_name)
 		if not arch_model.uses_rppg():
-			validation = None if devel_x is None else (devel_x, devel_y)
+			model_ckpt = EvaluationCallback(destination=model_dest, x=devel_x, y=devel_y)
 			arch_model.fit(x=train_x, y=train_y,
 									  epochs=epochs,
 									  batch_size=batch_size,
-									  # validation_split=0.2,
-									  validation_data=validation,
-									  callbacks=callbacks)
+									  callbacks=[model_ckpt])
 
 			arch_model.get_model().load_weights(model_dest)
-			pred = arch_model.get_model().predict(test_x)
-			evaluation = arch_model.evaluate(test_x, test_y)
-			print("{0} : {1}".format(arch_name, evaluation))
+			y_pred = arch_model.get_model().predict(test_x)
+			_, evaluation = evaluate_on_data(test_y, y_pred)
+
+			with open('{}_evaluation.txt'.format(args.prefix), 'a') as file:
+				file.write("{0} : {1}\n".format(arch_name, evaluation))
 		else:
-			validation = None if devel_x is None else ([devel_x, devel_rppg_x], devel_y)
+			model_ckpt = EvaluationCallback(destination=model_dest, x=[devel_x, devel_rppg_x], y=devel_y)
 			arch_model.fit(x=[train_x, train_rppg_x], y=train_y,
 													  epochs=epochs,
 													  batch_size=batch_size,
-													  # validation_split=0.2,
-													  validation_data=validation,
-													  callbacks=callbacks)
+													  callbacks=[model_ckpt])
 
 			arch_model.get_model().load_weights(model_dest)
 
-			evaluation = arch_model.evaluate([test_x, test_rppg_x], test_y)
-			pred = arch_model.get_model().predict([test_x, test_rppg_x])
-			print("{0} : {1}".format(arch_name, evaluation))
+			arch_model.get_model().load_weights(model_dest)
+			y_pred = arch_model.get_model().predict([test_x, test_rppg_x])
+			_, evaluation = evaluate_on_data(test_y, y_pred)
 
-		# plot_model(model, to_file='./model/models/images/{0}.png'.format(arch_name))
-		# pred = pred[:, 1]
-		# from sklearn.metrics import roc_curve, auc, roc_auc_score
-		# import matplotlib.pyplot as plt
-		# fpr, tpr, threshold = roc_curve(np.argmax(train_y, axis=1), pred)
-		# auc_roc = auc(fpr, tpr)
-
-		# plt.title('Receiver Operating Characteristic')
-		# plt.plot(fpr, tpr, 'b', label='AUC = {0:2f}'.format(auc_roc))
-		# plt.legend(loc='lower right')
-		# plt.plot([0, 1], [0, 1],'r--')
-		# plt.xlim([0, 1])
-		# plt.ylim([0, 1])
-		# plt.ylabel('True Positive Rate')
-		# plt.xlabel('False Positive Rate')
-		# plt.show()
-
-	# 	fnr = 1 - tpr
-	# 	eer.append(fpr[np.nanargmin(np.absolute((fnr - fpr)))])
-	# 	print("EER = %f" % (fpr[np.nanargmin(np.absolute((fnr - fpr)))]))
-
-	# with open('3dmad_eer.txt', 'a+') as f:
-	# 	f.write("{0}\n".format(eer))
+			with open('{}_evaluation.txt'.format(args.prefix), 'a') as file:
+				file.write("{0} : {1}\n".format(arch_name, evaluation))
