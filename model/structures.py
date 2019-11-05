@@ -107,13 +107,13 @@ class SimpleResnetRGB(GenericArchitecture):
 		for i in range(3):
 			x = resnet_identity_block(x, 128)
 
-		x = resnet_residual_block(x, 256)
-		for i in range(5):
-			x = resnet_identity_block(x, 256)
+		# x = resnet_residual_block(x, 256)
+		# for i in range(5):
+		# 	x = resnet_identity_block(x, 256)
 
-		x = resnet_residual_block(x, 512)
-		for i in range(2):
-			x = resnet_identity_block(x, 512)
+		# x = resnet_residual_block(x, 512)
+		# for i in range(2):
+		# 	x = resnet_identity_block(x, 512)
 
 		x = GlobalAveragePooling1D()(x)
 		x = Dense(2, activation='softmax')(x)
