@@ -12,7 +12,6 @@ from keras.layers import Dense, BatchNormalization, Activation, Flatten, Lambda
 from keras.layers import Conv1D, Input, MaxPooling1D, Concatenate
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.models import Model, Sequential
-from keras.utils import to_categorical
 from keras.callbacks import Callback
 from keras.utils import plot_model
 from keras.optimizers import Adam
@@ -196,7 +195,8 @@ if __name__ == "__main__":
 	architectures = [SimpleConvolutionalRGB,
 					 SimpleConvolutionalRPPG,
 					 DeepConvolutionalRGB,
-					 DeepConvolutionalRPPG]
+					 DeepConvolutionalRPPG,
+					 SimpleResnetRGB]
 
 	batch_size = 16
 	verbose = True
@@ -208,12 +208,18 @@ if __name__ == "__main__":
 		arch_name = type(arch_model).__name__
 
 		model_dest = "./model/models/{}_{}.ckpt".format(args.prefix, arch_name)
+
+		true_count = np.sum(train_y)
+		fake_count = len(train_y) - true_count
+		true_weight = fake_count / true_count
+
 		if not arch_model.uses_rppg():
 			model_ckpt = EvaluationCallback(destination=model_dest, x=devel_x, y=devel_y)
 			arch_model.fit(x=train_x, y=train_y,
 									  epochs=epochs,
 									  batch_size=batch_size,
-									  callbacks=[model_ckpt])
+									  callbacks=[model_ckpt],
+									  class_weight={0:1, 1:true_weight})
 
 			arch_model.get_model().load_weights(model_dest)
 			y_pred = arch_model.get_model().predict(test_x)
@@ -226,7 +232,8 @@ if __name__ == "__main__":
 			arch_model.fit(x=[train_x, train_rppg_x], y=train_y,
 													  epochs=epochs,
 													  batch_size=batch_size,
-													  callbacks=[model_ckpt])
+													  callbacks=[model_ckpt],
+													  class_weight={0:1, 1:true_weight})
 
 			arch_model.get_model().load_weights(model_dest)
 
