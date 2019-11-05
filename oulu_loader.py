@@ -44,6 +44,7 @@ def get_args():
 	parser.add_argument("source", default=None, action="store")
 	parser.add_argument("dest", default=None, action="store")
 	parser.add_argument("protocol", default=1, action="store", type=int)
+	parser.add_argument("--extra", default=1, action="store", type=int)
 	return parser.parse_args()
 
 
@@ -105,7 +106,89 @@ if __name__ == '__main__':
 			np.save('{0}/oulu_{1}_rppg_x.npy'.format(args.dest, split), split_rppg_x)
 
 			print(session_x.shape)
-
+		
 		load_by_session('train', [1, 2])
 		load_by_session('devel', [1, 2])
 		load_by_session('test', [3])
+	elif args.protocol == 2:
+		def load_by_medium(split, medium):
+			hints = get_hints('{0}/oulu_{1}_names.txt'.format(args.dest, split))
+			x = np.load('{0}/oulu_{1}_full.npy'.format(args.dest, split))
+			medium_x, medium_y = list(), list()
+			for i in range(len(x)):
+				label = 1 if (hints[i][3] == 1) else 0
+				if label == 1 or (((hints[i][3] - 1) % 2) == (medium % 2)):
+					medium_x.append(x[i])
+					medium_y.append(label)
+			
+			medium_x, medium_y = np.array(medium_x), np.array(medium_y)
+
+			split_rppg_x = get_rppg_data(medium_x, frame_rate=frame_rate)
+
+			np.save('{0}/oulu_{1}_x.npy'.format(args.dest, split), medium_x)
+			np.save('{0}/oulu_{1}_y.npy'.format(args.dest, split), medium_y)
+			np.save('{0}/oulu_{1}_rppg_x.npy'.format(args.dest, split), split_rppg_x)
+
+			print(medium_x.shape)
+		
+		load_by_medium('train', 1)
+		load_by_medium('devel', 1)
+		load_by_medium('test', 2)
+	elif args.protocol == 3:
+		def load_by_phone(split, phone_list):
+			hints = get_hints('{0}/oulu_{1}_names.txt'.format(args.dest, split))
+			x = np.load('{0}/oulu_{1}_full.npy'.format(args.dest, split))
+
+			split_x, split_y = list(), list()
+			for i in range(len(x)):
+				label = 1 if (hints[i][3] == 1) else 0
+				if hints[i][0] in phone_list:
+					split_x.append(x[i])
+					split_y.append(label)
+			
+			split_x, split_y = np.array(split_x), np.array(split_y)
+			split_rppg_x = get_rppg_data(split_x, frame_rate=frame_rate)
+
+			np.save('{0}/oulu_{1}_x.npy'.format(args.dest, split), split_x)
+			np.save('{0}/oulu_{1}_y.npy'.format(args.dest, split), split_y)
+			np.save('{0}/oulu_{1}_rppg_x.npy'.format(args.dest, split), split_rppg_x)
+
+			print(split_x.shape)
+
+		with_phone = list(range(1, 7))
+		with_phone.remove(args.extra)
+
+		load_by_phone('train', with_phone)
+		load_by_phone('devel', with_phone)
+		load_by_phone('test', [args.extra])
+	elif args.protocol == 4:
+		def load_final_protocol(split, sessions, medium, phone_list):
+			hints = get_hints('{0}/oulu_{1}_names.txt'.format(args.dest, split))
+			x = np.load('{0}/oulu_{1}_full.npy'.format(args.dest, split))
+			
+			data_x, data_y = list(), list()
+			for i in range(len(x)):
+				if hints[i][1] not in sessions:
+					continue
+
+				label = 1 if (hints[i][3] == 1) else 0
+				if (hints[i][0] in phone_list) and (label == 1 or ((hints[i][3] - 1) % 2) == (medium % 2)):
+					data_x.append(x[i])
+					data_y.append(label)
+			
+			data_x, data_y = np.array(data_x), np.array(data_y)
+
+			split_rppg_x = get_rppg_data(data_x, frame_rate=frame_rate)
+
+			np.save('{0}/oulu_{1}_x.npy'.format(args.dest, split), data_x)
+			np.save('{0}/oulu_{1}_y.npy'.format(args.dest, split), data_y)
+			np.save('{0}/oulu_{1}_rppg_x.npy'.format(args.dest, split), split_rppg_x)
+
+			print(data_x.shape)
+
+		with_phone = list(range(1, 7))
+		with_phone.remove(args.extra)
+
+		load_final_protocol('train', [1, 2], 1, with_phone)
+		load_final_protocol('devel', [1, 2], 1, with_phone)
+		load_final_protocol('test', [3], 2, [args.extra])
