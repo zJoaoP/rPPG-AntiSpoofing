@@ -2,20 +2,20 @@ import keras.backend as K
 import tensorflow as tf
 
 
+from keras.layers import BatchNormalization, Activation, MaxPooling1D, SpatialDropout1D
 from keras.layers import Input, Flatten, Conv1D, GlobalAveragePooling1D
-from keras.layers import BatchNormalization, Activation, MaxPooling1D
+from keras.layers import Concatenate, Lambda, Dense, LSTM, Dropout
 from model.metrics import APCER, BPCER, ACER
-from keras.layers import Concatenate, Lambda, Dense
 from keras.optimizers import Adam
 from keras.models import Model
 
 
 class GenericArchitecture:
-	def __init__(self, dimension, lr=1e-4, verbose=False):
+	def __init__(self, shape, lr=1e-4, verbose=False):
 		self.learning_rate = lr
 		self.verbose = verbose
 
-		self.model = self.build_model(input_shape=(dimension, 3))
+		self.model = self.build_model(input_shape=shape)
 
 	def fit(self, **kwargs):
 		kwargs['verbose'] = self.verbose
@@ -46,7 +46,8 @@ class FlatRGB(GenericArchitecture):
 
 		return model
 
-	def uses_rppg(self):
+	@staticmethod
+	def uses_rppg():
 		return False
 
 
@@ -74,7 +75,8 @@ class SimpleConvolutionalRGB(GenericArchitecture):
 
 		return model
 
-	def uses_rppg(self):
+	@staticmethod
+	def uses_rppg():
 		return False
 
 class SimpleResnetRGB(GenericArchitecture):
@@ -129,9 +131,67 @@ class SimpleResnetRGB(GenericArchitecture):
 
 		return model
 
-	def uses_rppg(self):
+	@staticmethod
+	def uses_rppg():
 		return False
 
+class SimpleResnetRPPG(GenericArchitecture):
+	def build_model(self, input_shape):
+		from keras.layers import Add
+
+		input_layer = Input(shape=input_shape)
+
+		def resnet_identity_block(input_layer, filters):
+			x = Conv1D(filters, kernel_size=3, strides=1, padding='same', activation='relu')(input_layer)
+			x = Conv1D(filters, kernel_size=3, strides=1, padding='same', activation='linear')(x)
+			x = Add()([x, input_layer])
+			return Activation('relu')(x)
+
+		def resnet_residual_block(input_layer, filters):
+			x = Conv1D(filters, kernel_size=3, strides=2, activation='relu')(input_layer)
+			x = Conv1D(filters, kernel_size=3, strides=1, padding='same', activation='linear')(x)
+		
+			input_layer = Conv1D(filters, kernel_size=3, strides=2, activation='linear')(input_layer)
+			
+			x = Add()([x, input_layer])
+			return Activation('relu')(x)
+		
+		factor = 32
+		x = Conv1D(factor, kernel_size=3, strides=2, activation='relu')(input_layer)
+
+		for i in range(3):
+			x = resnet_identity_block(x, factor)
+		
+		x = resnet_residual_block(x, 2*factor)
+		for i in range(3):
+			x = resnet_identity_block(x, 2*factor)
+
+		# x = resnet_residual_block(x, 4*factor)
+		# for i in range(5):
+		# 	x = resnet_identity_block(x, 4*factor)
+
+		# x = resnet_residual_block(x, 512)
+		# for i in range(2):
+		# 	x = resnet_identity_block(x, 512)
+
+		x = GlobalAveragePooling1D()(x)
+
+		x = Dense(2, activation='softmax')(x)
+
+		model = Model(input_layer, x)
+		model.compile(
+			optimizer=Adam(lr=self.learning_rate),
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
+		)
+		if self.verbose:
+			model.summary()
+
+		return model
+
+	@staticmethod
+	def uses_rppg():
+		return True
 
 class DeepConvolutionalRGB(GenericArchitecture):
 	def build_model(self, input_shape):
@@ -161,20 +221,21 @@ class DeepConvolutionalRGB(GenericArchitecture):
 
 		return model
 
-	def uses_rppg(self):
+	@staticmethod
+	def uses_rppg():
 		return False
 
 
 class FlatRPPG(GenericArchitecture):
-	def __init__(self, dimension, lr=1e-4, verbose=False):
+	def __init__(self, shape, lr=1e-4, verbose=False):
 		self.learning_rate = lr
 		self.verbose = verbose
 
-		self.model = self.build_model(input_dim=dimension)
+		self.model = self.build_model(input_shape=shape)
 
-	def build_model(self, input_dim):
-		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
-		input_ppg = Input(shape=(input_dim, 1), name='input_ppg')
+	def build_model(self, input_shape):
+		input_rgb = Input(shape=input_shape, name='input_rgb')
+		input_ppg = Input(shape=input_shape, name='input_ppg')
 		
 		rgb_branch = Flatten()(input_rgb)
 		ppg_branch = Flatten()(input_ppg)
@@ -182,7 +243,7 @@ class FlatRPPG(GenericArchitecture):
 		combined_branch = Concatenate()([rgb_branch, ppg_branch])
 		combined_branch = Dense(2, activation='softmax')(combined_branch)
 
-		model = Model([input_rgb, input_ppg], combined_branch)
+		model = Model(input_ppg, combined_branch)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='sparse_categorical_crossentropy',
@@ -193,29 +254,21 @@ class FlatRPPG(GenericArchitecture):
 
 		return model
 
-	def uses_rppg(self):
+	@staticmethod
+	def uses_rppg():
 		return True
 
 class SimpleConvolutionalRPPG(GenericArchitecture):
-	def __init__(self, dimension, lr=1e-4, verbose=False):
+	def __init__(self, shape, lr=1e-4, verbose=False):
 		self.learning_rate = lr
 		self.verbose = verbose
 
-		self.model = self.build_model(input_dim=dimension)
+		self.model = self.build_model(input_shape=shape)
 
-	def build_model(self, input_dim):
-		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
-		input_ppg = Input(shape=(input_dim, 1), name='input_ppg')
+	def build_model(self, input_shape):
+		input_ppg = Input(shape=input_shape, name='input_ppg')
 		
-		rgb_branch = Conv1D(64, kernel_size=5,
-								strides=1,
-								activation='linear',
-								use_bias=False)(input_rgb)
-
-		rgb_branch = BatchNormalization()(rgb_branch)
-		rgb_branch = Activation('relu')(rgb_branch)
-		
-		ppg_branch = Conv1D(64, kernel_size=5,
+		ppg_branch = Conv1D(64, kernel_size=7,
 								strides=1,
 								activation='linear',
 								use_bias=False)(input_ppg)
@@ -223,13 +276,11 @@ class SimpleConvolutionalRPPG(GenericArchitecture):
 		ppg_branch = BatchNormalization()(ppg_branch)
 		ppg_branch = Activation('relu')(ppg_branch)
 
-		rgb_branch = GlobalAveragePooling1D()(rgb_branch)
 		ppg_branch = GlobalAveragePooling1D()(ppg_branch)
 
-		combined_branch = Concatenate()([rgb_branch, ppg_branch])
-		combined_branch = Dense(2, activation='softmax')(combined_branch)
+		ppg_branch = Dense(2, activation='softmax')(ppg_branch)
 
-		model = Model([input_rgb, input_ppg], combined_branch)
+		model = Model(input_ppg, ppg_branch)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='sparse_categorical_crossentropy',
@@ -240,39 +291,101 @@ class SimpleConvolutionalRPPG(GenericArchitecture):
 
 		return model
 
-	def uses_rppg(self):
+	@staticmethod
+	def uses_rppg():
+		return True
+
+class LSTM_RPPG(GenericArchitecture):
+	def __init__(self, shape, lr=1e-4, verbose=False):
+		self.learning_rate = lr
+		self.verbose = verbose
+
+		self.model = self.build_model(input_shape=shape)
+
+	def build_model(self, input_shape):
+		input_ppg = Input(shape=input_shape, name='input_ppg')
+		
+		ppg_branch = LSTM(32)(input_ppg)
+
+		ppg_branch = Dense(2, activation='softmax')(ppg_branch)
+
+		model = Model(input_ppg, ppg_branch)
+		model.compile(
+			optimizer=Adam(lr=self.learning_rate),
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
+		)
+		if self.verbose:
+			model.summary()
+
+		return model
+
+	@staticmethod
+	def uses_rppg():
+		return True
+
+class CNN_LSTM_RPPG(GenericArchitecture):
+	def __init__(self, shape, lr=1e-4, verbose=False):
+		self.learning_rate = lr
+		self.verbose = verbose
+
+		self.model = self.build_model(input_shape=shape)
+
+	def build_model(self, input_shape):
+		input_ppg = Input(shape=input_shape, name='input_ppg')
+		
+		ppg_branch = Conv1D(16, kernel_size=5, activation='linear', use_bias=False)(input_ppg)
+		ppg_branch = BatchNormalization()(ppg_branch)
+		ppg_branch = Activation('relu')(ppg_branch)
+		ppg_branch = MaxPooling1D(pool_size=3, strides=2)(ppg_branch)
+
+		ppg_branch = Conv1D(32, kernel_size=5, activation='linear', use_bias=False)(ppg_branch)
+		ppg_branch = BatchNormalization()(ppg_branch)
+		ppg_branch = Activation('relu')(ppg_branch)
+		ppg_branch = MaxPooling1D(pool_size=3, strides=2)(ppg_branch)
+
+		ppg_branch = LSTM(32)(ppg_branch)
+
+		ppg_branch = Dense(2, activation='softmax')(ppg_branch)
+
+		model = Model(input_ppg, ppg_branch)
+		model.compile(
+			optimizer=Adam(lr=self.learning_rate),
+			loss='sparse_categorical_crossentropy',
+			metrics=['acc']
+		)
+		if self.verbose:
+			model.summary()
+
+		return model
+
+	@staticmethod
+	def uses_rppg():
 		return True
 
 
 class DeepConvolutionalRPPG(GenericArchitecture):
-	def __init__(self, dimension, lr=1e-4, verbose=False):
+	def __init__(self, shape, lr=1e-4, verbose=False):
 		self.learning_rate = lr
 		self.verbose = verbose
 
-		self.model = self.build_model(input_dim=dimension)
+		self.model = self.build_model(input_shape=shape)
 
-	def build_model(self, input_dim):
-		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
-		input_ppg = Input(shape=(input_dim, 1), name='input_ppg')
+	def build_model(self, input_shape):
+		input_ppg = ppg_branch = Input(shape=input_shape, name='input_ppg')
 
-		def ConvWithBN(input_layer, filters):
-			x = Conv1D(filters, kernel_size=5, strides=2, activation='linear', use_bias=False)(input_layer)
-			x = BatchNormalization()(x)
-			return Activation('relu')(x)
+		for f in [64, 128, 256]:
+			ppg_branch = Conv1D(f, kernel_size=7, strides=1, activation='linear', use_bias=False)(ppg_branch)
+			ppg_branch = BatchNormalization()(ppg_branch)
+			ppg_branch = Activation('relu')(ppg_branch)
+			
+			ppg_branch = MaxPooling1D(pool_size=2, strides=2)(ppg_branch)
+			ppg_branch = Dropout(0.2)(ppg_branch)
 
-		rgb_branch = ConvWithBN(input_rgb, 64)
-		rgb_branch = ConvWithBN(rgb_branch, 128)
-
-		ppg_branch = ConvWithBN(input_ppg, 64)
-		ppg_branch = ConvWithBN(ppg_branch, 128)
-		
-		rgb_branch = GlobalAveragePooling1D()(rgb_branch)
 		ppg_branch = GlobalAveragePooling1D()(ppg_branch)
+		ppg_branch = Dense(2, activation='softmax')(ppg_branch)
 
-		combined_branch = Concatenate()([rgb_branch, ppg_branch])
-		combined_branch = Dense(2, activation='softmax')(combined_branch)
-
-		model = Model([input_rgb, input_ppg], combined_branch)
+		model = Model(input_ppg, ppg_branch)
 		model.compile(
 			optimizer=Adam(lr=self.learning_rate),
 			loss='sparse_categorical_crossentropy',
@@ -283,7 +396,8 @@ class DeepConvolutionalRPPG(GenericArchitecture):
 
 		return model
 
-	def uses_rppg(self):
+	@staticmethod
+	def uses_rppg():
 		return True
 
 
@@ -323,20 +437,21 @@ class TripletRGB(GenericArchitecture):
 
 		return model
 
-	def uses_rppg(self):
+	@staticmethod
+	def uses_rppg():
 		return False
 
 
 class TripletRPPG(GenericArchitecture):
-	def __init__(self, dimension, lr=1e-4, verbose=False):
+	def __init__(self, shape, lr=1e-4, verbose=False):
 		self.learning_rate = lr
 		self.verbose = verbose
 
-		self.model = self.build_model(input_dim=dimension)
+		self.model = self.build_model(input_shape=shape)
 
-	def build_model(self, input_dim):
-		input_rgb = Input(shape=(input_dim, 3), name='input_rgb')
-		input_ppg = Input(shape=(input_dim, 1), name='input_ppg')
+	def build_model(self, input_shape):
+		input_rgb = Input(shape=input_shape, name='input_rgb')
+		input_ppg = Input(shape=input_shape, name='input_ppg')
 		
 		def ConvWithBN(input_layer, filters):
 			x = Conv1D(filters, kernel_size=5, strides=1, activation='linear', use_bias=False)(input_layer)
@@ -379,5 +494,6 @@ class TripletRPPG(GenericArchitecture):
 
 		return model
 
-	def uses_rppg(self):
+	@staticmethod
+	def uses_rppg():
 		return True
