@@ -72,19 +72,35 @@ def slice_partition(name, size, stride, prefix='rad'):
 	
 	# slice_split_fake = slice_and_stride(split_fake, size, stride)
 	# slice_split_real = slice_and_stride(split_real, size, stride)
+
 	split_real = split_real[:, :size]
 	split_fake = split_fake[:, :size]
+
 	split = np.append(split_fake, split_real, axis=0)
 	
 	labels_split_fake = np.zeros([len(split_fake)])
 	labels_split_real = np.ones([len(split_real)])
+	
 	labels = np.append(labels_split_fake, labels_split_real)
 
-	split_rppg = get_rppg_data(split, 30)
-	
+	split_rppg = get_rppg_data(split, frame_rate=24)
+
+	# def norm_0_1(data):
+	# 	return (data - data.min()) / (data.max() - data.min())
+
+	# first_roi, second_roi = split_rppg[:, :, 0], split_rppg[:, :, 1]
+	# split_rppg = ((first_roi - second_roi) ** 2).reshape(first_roi.shape[0], first_roi.shape[1], 1)
+	# split_rppg = norm_0_1(split_rppg) * 255.0
+
+	# first_rgb, second_rgb = split[:, :, :3], split[:, :, 3:]
+	# split = ((first_rgb - second_rgb) ** 2).reshape(first_rgb.shape[0], first_rgb.shape[1], 3)
+	# split = norm_0_1(split) * 255.0
+
 	np.save("{0}/{1}_{2}_ppg.npy".format(args.dest, prefix, name), split_rppg)
 	np.save("{0}/{1}_{2}_y.npy".format(args.dest, prefix, name), labels)
 	np.save("{0}/{1}_{2}_x.npy".format(args.dest, prefix, name), split)
+
+	# print(split_rppg.shape)
 
 
 if __name__ == "__main__":
