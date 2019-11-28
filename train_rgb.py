@@ -84,7 +84,6 @@ class EvaluationCallback(Callback):
 		acer, evaluation = evaluate_on_data(devel_y, pred_y)
 
 		print("(Epoch {}) {}.".format(self.epochs, evaluation))
-		
 		self.epochs += 1
 
 		if self.best_acer > acer and self.destination is not None:
@@ -96,6 +95,8 @@ class EvaluationCallback(Callback):
 			self.best_acer = acer
 
 			self.model.save_weights(self.destination)
+		elif self.best_acer < acer and (self.verbose):
+			print('\n[ModelCheckpoint] ACER not improved from {:.5f}\n'.format(self.best_acer))
 
 
 if __name__ == "__main__":
@@ -130,6 +131,9 @@ if __name__ == "__main__":
 				p_y = np.append(p_y, p_y)
 
 			p_x = p_x / 255.0
+
+			# ppg_x = ppg_x[:, :, -1:] #REMOVER ISTO (TREINAR COM TODOS) TODO
+
 			return p_x, ppg_x, p_y
 
 		train_x, train_rppg_x, train_y = load_partition('train')
@@ -168,8 +172,6 @@ if __name__ == "__main__":
 
 			x = x / 255.0
 
-			# shuffle(x, rppg, y)
-
 			return x, rppg, y
 
 		train_x, train_rppg_x, train_y = load_split('train')
@@ -191,29 +193,42 @@ if __name__ == "__main__":
 	from model.structures import SimpleConvolutionalRGB
 	from model.structures import DeepConvolutionalRPPG
 	from model.structures import DeepConvolutionalRGB
+	from model.structures import SimpleResnetRPPG
 	from model.structures import SimpleResnetRGB
+	from model.structures import LSTM_RPPG
+	from model.structures import CNN_LSTM_RPPG
+
 	architectures = [SimpleConvolutionalRGB,
 					 SimpleConvolutionalRPPG,
 					 DeepConvolutionalRGB,
 					 DeepConvolutionalRPPG,
-					 SimpleResnetRGB]
+					 SimpleResnetRGB,
+					 SimpleResnetRPPG,
+					 CNN_LSTM_RPPG,
+					 LSTM_RPPG]
+
+	architectures = [SimpleConvolutionalRPPG,
+					 DeepConvolutionalRPPG,
+					 SimpleResnetRPPG,
+					 CNN_LSTM_RPPG,
+					 LSTM_RPPG]
+
+	architectures = [DeepConvolutionalRPPG]
 
 	batch_size = 16
 	verbose = True
 	epochs = 1000
 
-	eer = list()
 	for arch in architectures:
-		arch_model = arch(dimension=train_x.shape[1], lr=1e-4, verbose=verbose)
-		arch_name = type(arch_model).__name__
-
+		arch_name = arch.__name__
 		model_dest = "./model/models/{}_{}.ckpt".format(args.prefix, arch_name)
 
 		true_count = np.sum(train_y)
 		fake_count = len(train_y) - true_count
 		true_weight = fake_count / true_count
+		if not arch.uses_rppg():
+			arch_model = arch(shape=train_x.shape[1:], lr=1e-4, verbose=verbose)
 
-		if not arch_model.uses_rppg():
 			model_ckpt = EvaluationCallback(destination=model_dest, x=devel_x, y=devel_y)
 			arch_model.fit(x=train_x, y=train_y,
 									  epochs=epochs,
@@ -228,17 +243,19 @@ if __name__ == "__main__":
 			with open('{}_evaluation.txt'.format(args.prefix), 'a') as file:
 				file.write("{0} : {1}\n".format(arch_name, evaluation))
 		else:
-			model_ckpt = EvaluationCallback(destination=model_dest, x=[devel_x, devel_rppg_x], y=devel_y)
-			arch_model.fit(x=[train_x, train_rppg_x], y=train_y,
-													  epochs=epochs,
-													  batch_size=batch_size,
-													  callbacks=[model_ckpt],
-													  class_weight={0:1, 1:true_weight})
+			arch_model = arch(shape=train_rppg_x.shape[1:], lr=1e-3, verbose=verbose)
+
+			model_ckpt = EvaluationCallback(destination=model_dest, x=devel_rppg_x, y=devel_y)
+			arch_model.fit(x=train_rppg_x, y=train_y,
+										   epochs=epochs,
+										   batch_size=batch_size,
+										   callbacks=[model_ckpt],
+										   class_weight={0:1, 1:true_weight})
 
 			arch_model.get_model().load_weights(model_dest)
 
 			arch_model.get_model().load_weights(model_dest)
-			y_pred = arch_model.get_model().predict([test_x, test_rppg_x])
+			y_pred = arch_model.get_model().predict(test_rppg_x)
 			_, evaluation = evaluate_on_data(test_y, y_pred)
 
 			with open('{}_evaluation.txt'.format(args.prefix), 'a') as file:
