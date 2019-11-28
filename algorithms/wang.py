@@ -11,26 +11,24 @@ class Wang(DefaultStrategy):
 			return (size - 6) // 3
 
 		if window_size is None:
-			window_size = frame_rate
+			window_size = int(frame_rate * 1.6)
 
-		signal = np.zeros(len(temporal_means))
-		for n in range(len(temporal_means)):
-			Cn = temporal_means
-			m = n - window_size + 1
-			if m > 0:
-				Cin = Cn[m : n, :]
-				S = np.matmul(np.array([[0, 1, -1], [-2, 1, 1]]), Cin.T)
-				if np.std(S[1]) == 0.0:
-					continue
-				else:
-					H = S[0] + (np.std(S[0]) / np.std(S[1])) * S[1]
-				
-				signal[m : n] += (H - np.mean(H))
+		signal = np.zeros(len(temporal_means), dtype=np.float32)
+		for t in range(len(temporal_means) - window_size):
+			Cn = temporal_means[t:t+window_size].T
+			if np.any(Cn.mean(axis=0) == 0.0):
+				continue
+			else:
+				Cn = Cn / Cn.mean(axis=0)
+			
+			projection_matrix = np.array([[0, 1, -1], [-2, 1, 1]], dtype=np.float32)
+			S = np.matmul(projection_matrix, Cn)
 
-		signal = DefaultStrategy.bandpass_filter(signal,
-												frame_rate=frame_rate,
-												min_freq=0.6,
-												max_freq=4.0,
-												order=get_order(len(signal)))
-		
-		return (signal - signal.mean()) / signal.std()
+			if np.std(S[1]) == 0.0:
+				continue
+			else:	
+				h = S[0] + (np.std(S[0]) / np.std(S[1])) * S[1]
+			
+			signal[t:t+window_size] += h - h.mean()
+
+		return DefaultStrategy.moving_average(signal, frame_rate // 4)
