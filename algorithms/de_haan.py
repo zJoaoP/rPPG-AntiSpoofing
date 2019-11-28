@@ -11,8 +11,8 @@ class DeHaan(DefaultStrategy):
 		def get_order(size):
 			return (size - 6) // 3
 
+		temporal_means = temporal_means.copy()
 		signal = np.zeros(len(temporal_means), dtype=np.float32)
-
 		window_size = int(frame_rate * 1.6)
 
 		for i in range(3):
@@ -29,7 +29,8 @@ class DeHaan(DefaultStrategy):
 
 		for j in range(0, len(temporal_means), window_size // 2):
 			if j + window_size > len(temporal_means):
-				break
+				# break
+				window_size = len(temporal_means) - j
 
 			r, g, b = [temporal_means[j : j + window_size, i] for i in range(3)]
 
@@ -44,4 +45,3 @@ class DeHaan(DefaultStrategy):
 			signal[j:j + window_size] += np.hanning(window_size) * (Xf - (alpha * Yf))
 
 		return (signal - np.mean(signal)) / np.std(signal)
-		# return signal
