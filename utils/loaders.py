@@ -1,5 +1,5 @@
+from utils.extractor import LeftCheek, RightCheek, Nose, CheeksAndNose
 from utils.landmarks import LandmarkPredictor
-from utils.extractor import CheeksAndNose
 import numpy as np
 import threading
 import dlib
@@ -129,18 +129,21 @@ class VideoLoader:
 
 			return np.array(annotations)
 
+		left_cheek, right_cheek, nose, cheeks_and_nose = LeftCheek(), RightCheek(), Nose(), CheeksAndNose()
 		loader = OpenCV_Wrapper(source=source)
 		predictor = LandmarkPredictor()
-		extractor = CheeksAndNose()
+
 		if annotation is not None:
 			annotations = load_annotations(annotation)
 		
-		features = np.zeros([loader.lenght(), 3], dtype=np.float32)
+		cheeks_and_nose_features = np.empty([loader.lenght(), 3], dtype=np.float32)
+		right_cheek_features = np.empty([loader.lenght(), 3], dtype=np.float32)
+		left_cheek_features = np.empty([loader.lenght(), 3], dtype=np.float32)
+		nose_features = np.empty([loader.lenght(), 3], dtype=np.float32)
 		for i in range(loader.lenght()):
 			success, frame = loader.read()
-			if not success:
-				break
-			
+			cv2.waitKey(1) & 0xFF
+
 			def valid_annotation(annotations, current_index):
 				if len(annotations) < current_index:
 					return False
@@ -152,9 +155,28 @@ class VideoLoader:
 							return False
 					return True
 
+			def get_roi_mean(roi):
+				roi[roi < 1.0] = np.nan
+				r, g, b = np.nanmean(roi, axis=(0, 1))
+				for c in [r, g, b]:
+					if np.isnan(c):
+						c = 0
+					
+				return np.array([[r, g, b]], dtype=np.float32)
+
 			if (annotation is not None) and not valid_annotation(annotations, i):
-				features[i] = 0 if (i == 0) else features[i - 1]
+				if i == 0:
+					cheeks_and_nose_features[i] = 0.0
+					right_cheek_features[i] = 0.0
+					left_cheek_features[i] = 0.0
+					nose_features[i] = 0.0
+				else:
+					cheeks_and_nose_features[i] = cheeks_and_nose_features[i - 1]
+					right_cheek_features[i] = right_cheek_features[i - 1]
+					left_cheek_features[i] = left_cheek_features[i - 1]
+					nose_features[i] = nose_features[i - 1]
 			else:
+				# Corrigir os casos sem anotações.
 				if annotation is None:
 					rect = predictor.detect_face(frame)
 					if rect is None:
@@ -174,16 +196,35 @@ class VideoLoader:
 						frame = frame[y:h, x:w]
 
 				landmarks = predictor.detect_landmarks(frame)
-				frame = extractor.extract_roi(frame, landmarks).astype(np.float32)
+				
+				cheeks_and_nose_roi = cheeks_and_nose.extract_roi(frame, landmarks).astype(np.float32)
+				right_cheek_roi = right_cheek.extract_roi(frame, landmarks).astype(np.float32)
+				left_cheek_roi = left_cheek.extract_roi(frame, landmarks).astype(np.float32)
+				nose_roi = nose.extract_roi(frame, landmarks).astype(np.float32)
 
-				frame[frame == 0.0] = np.nan
-				b, g, r = np.nanmean(frame, axis=(0, 1))
-				features[i] = np.array([[r, g, b]])
-				if np.any(np.isnan(features[i])):
-					features[i] = features[i - 1] if i > 0 else 0.0
+				cheeks_and_nose_features[i] = get_roi_mean(cheeks_and_nose_roi)
+				right_cheek_features[i] = get_roi_mean(right_cheek_roi)
+				left_cheek_features[i] = get_roi_mean(left_cheek_roi)
+				nose_features[i] = get_roi_mean(nose_roi)
 
 		print("[DataLoader] Features extracted from '{0}'.".format(source))
-		return features
+
+		# import matplotlib.pyplot as plt
+
+		# old_data = np.load('./data/old/rad_train_real.npy')
+		# for i, c in enumerate('rgb'):
+		# 	plt.plot(old_data[0][:, i], '{}--'.format(c))
+
+		# for i, c in enumerate('rgb'):
+		# 	plt.plot(cheeks_and_nose_features[:, i], c)
+
+		# plt.show()
+
+		# raise Exception("UAHEUEHUEAH")
+
+		global_features = np.append(left_cheek_features, nose_features, axis=1)
+		global_features = np.append(global_features, right_cheek_features, axis=1)
+		return np.append(global_features, cheeks_and_nose_features, axis=1)
 
 class GenericDatasetLoader:
 	@staticmethod
@@ -217,6 +258,7 @@ class GenericDatasetLoader:
 		video_locations = sorted(video_locations)
 		folder_features = None
 		k = 0
+
 		for i in range(len(video_locations)):
 			video = video_locations[i]
 			annotation = annotations[i] if annotations is not None else None
@@ -229,7 +271,7 @@ class GenericDatasetLoader:
 			if folder_features is None:
 				folder_features = np.empty([len(video_locations),
 											video_data.shape[0],
-											3], dtype=np.float32)
+											video_data.shape[1]], dtype=np.float32)
 
 			else:
 				if video_data.shape[0] < folder_features.shape[1]:
@@ -244,6 +286,7 @@ class GenericDatasetLoader:
 			k += 1
 		
 		return folder_features
+
 
 def slice_and_stride(data, size, stride):	
 	def slice_and_stride_video(video):
@@ -264,24 +307,35 @@ def slice_and_stride(data, size, stride):
 
 	return data_slice
 
+
 from algorithms.de_haan import DeHaan
 from algorithms.wang import Wang
 from algorithms.pbv import PBV
 from copy import deepcopy
-def get_rppg_data(data, frame_rate=25):
+
+def get_rppg_data(data, frame_rate=24):
 	data = deepcopy(data)
+
 	final_data = None
-	nan_locations = np.isnan(data)
-	data[nan_locations] = 0.0
-	for i in range(len(data)):
-		current_rppg = Wang.extract_rppg(data[i], frame_rate)
+	for c in range(data.shape[-1] // 3):
+		roi_data = data[:, :, c*3:(c+1)*3]
+		nan_locations = np.isnan(roi_data)
+		roi_data[nan_locations] = 0.0
+
+		current_data = np.empty([roi_data.shape[0], roi_data.shape[1], 1])
+		for i in range(len(roi_data)):
+			current_rppg = Wang.extract_rppg(roi_data[i], frame_rate)
+			# _, current_fft = DeHaan.get_fft(current_rppg, frame_rate)
+
+			current_data[i] = current_rppg.reshape(current_rppg.shape[0], 1)
+			# current_data[i] = current_fft.reshape(current_fft.shape[0], 1)
+
+			if i % 128 == 0:
+				print("[{} / {}] Extracting ppg from roi id = {}.".format(i, len(current_data), c))
+
 		if final_data is None:
-			final_data = np.empty([len(data), current_rppg.shape[0], 1])
+			final_data = current_data
+		else:
+			final_data = np.append(final_data, current_data, axis=-1)
 
-		final_data[i] = current_rppg.reshape(current_rppg.shape[0], 1)
-
-		if (i > 0) and (i % 256 == 0):
-			print("[Wang] {0} / {1} rPPG features processed.".format(i,
-																	 len(data)))
 	return final_data
-	
